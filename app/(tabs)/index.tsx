@@ -10,11 +10,11 @@ import { Link } from 'expo-router';
 export default function HomeScreen() {
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
+      headerBackgroundColor={{ light: '#ffffff', dark: '#1a1a2e' }}
       headerImage={
         <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+          source={require('@/assets/images/IskedyulLogo.png')}
+          style={styles.iskedyulLogo}
         />
       }>
       <ThemedView style={styles.titleContainer}>
@@ -59,7 +59,6 @@ export default function HomeScreen() {
             </Link.Menu>
           </Link.Menu>
         </Link>
-
         <ThemedText>
           {`Tap the Explore tab to learn more about what's included in this starter app.`}
         </ThemedText>
@@ -88,11 +87,12 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  iskedyulLogo: {
+    height: 160,
+    width: 160,
     position: 'absolute',
+    bottom: 10,
+    left: '50%',
+    transform: [{ translateX: -80 }],
   },
 });
