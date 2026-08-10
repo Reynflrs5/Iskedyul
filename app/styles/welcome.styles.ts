@@ -1,16 +1,14 @@
-import { Platform, StyleSheet, Dimensions } from 'react-native';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { Platform, StyleSheet } from 'react-native';
 
 // ============================================================================
 // DESIGN SYSTEM — "Planner" identity
 // Iskedyul — Student Planner
 //
-// Direction: away from generic navy/white SaaS onboarding, toward the feel
-// of an actual planner page — warm paper, ink, and a highlighter accent.
-// The signature element is the WeekStrip: seven small bars representing
-// Mon–Sun, echoing the product's actual job (building a schedule) instead
-// of a decorative icon.
+// v3: no-carousel hero layout. Logo is now the centerpiece, background
+// carries ambient depth (soft color blobs + notebook rule lines) instead of
+// relying on slide content, and every fixed pixel value that depended on
+// screen width has moved out of StyleSheet and into the component, driven
+// by useWindowDimensions so it recalculates per-device and on rotation.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -55,13 +53,10 @@ export const colors = {
 
 // ----------------------------------------------------------------------------
 // TYPOGRAPHY
-// A serif display face gives headlines character; body stays a clean
-// grotesk so long copy stays easy to read. Falls back to System everywhere
-// until/unless the serif is loaded — see note at bottom of file.
 // ----------------------------------------------------------------------------
 
 const FONT_DISPLAY = Platform.select({
-  ios: 'Fraunces-Bold', // falls back to System if not linked — see note below
+  ios: 'Fraunces-Bold', // falls back to System if not linked
   android: 'Fraunces-Bold',
   default: 'System',
 });
@@ -71,9 +66,7 @@ const FONT_MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default:
 export const type = {
   display: {
     fontFamily: FONT_DISPLAY,
-    fontSize: 34,
     fontWeight: '700' as const,
-    lineHeight: 38,
     letterSpacing: -0.4,
   },
   h1: {
@@ -84,22 +77,17 @@ export const type = {
     letterSpacing: -0.2,
   },
   h2: {
-    fontFamily: FONT_BODY,
-    fontSize: 17,
-    fontWeight: '600' as const,
-    lineHeight: 23,
+    fontFamily: FONT_DISPLAY,
+    fontSize: 18,
+    fontWeight: '700' as const,
+    lineHeight: 24,
+    letterSpacing: -0.1,
   },
   body: {
     fontFamily: FONT_BODY,
     fontSize: 15.5,
     fontWeight: '400' as const,
     lineHeight: 23,
-  },
-  bodySmall: {
-    fontFamily: FONT_BODY,
-    fontSize: 13.5,
-    fontWeight: '400' as const,
-    lineHeight: 19,
   },
   label: {
     fontFamily: FONT_BODY,
@@ -167,17 +155,30 @@ export const shadows = {
     shadowRadius: 16,
     elevation: 8,
   },
-  tab: {
-    shadowColor: colors.shadowInk,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
 };
+
+// ----------------------------------------------------------------------------
+// WEEK STRIP DATA — a believable "week shape", Wed carries the accent
+// ----------------------------------------------------------------------------
+
+// Order is Monday -> Sunday to match how the strip reads left to right.
+// `height` is just the visual bar height; which day is "today" (the accent
+// color) is computed live in the component from the device's actual date.
+export const WEEK_DAYS = [
+  { label: 'M', height: 18 },
+  { label: 'T', height: 27 },
+  { label: 'W', height: 42 },
+  { label: 'T', height: 31 },
+  { label: 'F', height: 23 },
+  { label: 'S', height: 14 },
+  { label: 'S', height: 10 },
+];
 
 // ============================================================================
 // STYLESHEET
+// Values that scale with screen size (logo diameter, blob sizes, horizontal
+// padding) are intentionally NOT here — they're computed in the component
+// with useWindowDimensions and merged in via inline style arrays.
 // ============================================================================
 
 export const styles = StyleSheet.create({
@@ -185,8 +186,14 @@ export const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.paper,
   },
-
-  // --- Notebook rule-line background (signature texture, very subtle) ---
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  blob: {
+    position: 'absolute',
+    borderRadius: 9999,
+  },
   ruleLine: {
     position: 'absolute',
     left: 0,
@@ -202,57 +209,58 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.marigoldSoft,
   },
 
-  // --- Top branding ---
-  brandHeader: {
+  content: {
+    flex: 1,
     alignItems: 'center',
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
   },
 
-  // "Planner tab" logo badge — rounded rect with a folded corner notch,
-  // instead of a plain circle/rounded-square icon container.
+  // --- Hero (logo-centered) ---
+  hero: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logoTab: {
-    width: 76,
-    height: 76,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     backgroundColor: colors.paperRaised,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
     ...shadows.soft,
   },
   logoTabCorner: {
     position: 'absolute',
     top: 0,
     right: 0,
-    width: 16,
-    height: 16,
+    width: 18,
+    height: 18,
     backgroundColor: colors.marigoldSoft,
     borderBottomLeftRadius: radius.xs,
   },
   logo: {
-    width: 46,
-    height: 46,
+    width: '128%',
+    height: '128%',
     resizeMode: 'contain',
   },
 
   eyebrow: {
     ...type.overline,
     color: colors.inkSoft,
+    marginTop: spacing.lg,
     marginBottom: spacing.xxs,
   },
   appName: {
     ...type.display,
     color: colors.ink,
+    textAlign: 'center',
   },
   appTagline: {
     ...type.body,
     color: colors.inkSoft,
     textAlign: 'center',
-    marginTop: 4,
-    maxWidth: SCREEN_WIDTH * 0.78,
+    marginTop: 6,
   },
 
   // --- WeekStrip signature element ---
@@ -264,6 +272,11 @@ export const styles = StyleSheet.create({
     height: 54,
     marginTop: spacing.lg,
     marginBottom: spacing.xxs,
+  },
+  weekStripBarTrack: {
+    width: 9,
+    height: 54,
+    justifyContent: 'flex-end',
   },
   weekStripBar: {
     width: 9,
@@ -282,64 +295,17 @@ export const styles = StyleSheet.create({
     color: colors.inkFaint,
   },
 
-  // --- Carousel ---
-  carouselContainer: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  slideCard: {
-    width: SCREEN_WIDTH,
-    paddingHorizontal: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  slideGlyph: {
-    width: 56,
-    height: 56,
-    marginBottom: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  slideTitle: {
-    ...type.h1,
-    color: colors.ink,
-    textAlign: 'center',
-    marginBottom: spacing.xxs,
-  },
-  slideSubtitle: {
-    ...type.body,
-    color: colors.inkSoft,
-    textAlign: 'center',
-    maxWidth: SCREEN_WIDTH * 0.78,
-  },
-
-  // --- Pagination — small "pencil tick" marks rather than plain dots ---
-  dotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm,
-  },
-  dot: {
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.border,
-  },
-  dotActive: {
-    width: 22,
-    backgroundColor: colors.marigold,
-  },
-  dotInactive: {
-    width: 6,
-    backgroundColor: colors.border,
-  },
-
   // --- CTA / bottom section ---
   bottomSection: {
-    paddingHorizontal: spacing.lg,
+    width: '100%',
     paddingBottom: spacing.lg,
     gap: spacing.sm,
+    alignItems: 'center',
+  },
+  shadowsCtaWrap: {
+    width: '100%',
+    borderRadius: radius.pill,
+    ...shadows.cta,
   },
   primaryButton: {
     flexDirection: 'row',
@@ -350,7 +316,6 @@ export const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     width: '100%',
-    ...shadows.cta,
   },
   primaryButtonText: {
     ...type.label,
@@ -385,15 +350,3 @@ export const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
-
-// ----------------------------------------------------------------------------
-// NOTE on the display font:
-// FONT_DISPLAY points at 'Fraunces-Bold', a serif with real character for
-// headlines. It will silently fall back to the system font until it's
-// linked. To enable it:
-//   npx expo install @expo-google-fonts/fraunces expo-font
-// then load Fraunces_700Bold via useFonts() before rendering, and change
-// FONT_DISPLAY above to the loaded family name. Everything else in this
-// file works fine without that step — it's a pure visual upgrade, not a
-// dependency.
-// ----------------------------------------------------------------------------

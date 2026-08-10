@@ -1,7 +1,4 @@
 import { StyleSheet } from 'react-native';
-// Pulling tokens from welcome.styles instead of redefining them keeps both
-// screens visually locked to the same brand system — change the palette
-// once, in one place, and every screen that imports it updates.
 import { colors, type, spacing, radius, shadows } from './welcome.styles';
 
 export { colors, type, spacing, radius, shadows };
@@ -14,14 +11,9 @@ export const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
 
   backButton: {
     position: 'absolute',
-    left: 0,
     width: 44,
     height: 44,
     borderRadius: radius.md,
@@ -36,18 +28,18 @@ export const styles = StyleSheet.create({
 
   logoWrap: {
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   logo: {
     resizeMode: 'contain',
   },
 
   headerSection: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   eyebrow: {
     ...type.overline,
-    color: colors.inkSoft,
+    color: colors.sage,
     marginBottom: spacing.xxs,
   },
   title: {
@@ -82,7 +74,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
-    height: 56,
+    height: 52,
   },
   input: {
     flex: 1,
@@ -94,32 +86,20 @@ export const styles = StyleSheet.create({
     padding: spacing.xxs,
   },
 
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginTop: -spacing.xs,
-  },
-  forgotPasswordText: {
-    ...type.label,
-    fontSize: 13,
-    color: colors.ink,
-    textDecorationLine: 'underline',
-    textDecorationColor: colors.marigold,
-  },
-
-  loginButtonShadowWrap: {
+  signupButtonShadowWrap: {
     borderRadius: radius.pill,
     marginTop: spacing.xxs,
     ...shadows.cta,
   },
-  loginButton: {
-    backgroundColor: colors.ink,
+  signupButton: {
+    backgroundColor: colors.sage,
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  loginButtonText: {
+  signupButtonText: {
     ...type.label,
-    color: colors.paper,
+    color: colors.white,
     fontSize: 16,
   },
 
@@ -139,23 +119,23 @@ export const styles = StyleSheet.create({
     color: colors.inkFaint,
   },
 
-  signupRow: {
+  signinRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: spacing.xxs,
     gap: spacing.xxs,
   },
-  signupText: {
+  signinText: {
     ...type.body,
     fontSize: 14,
     color: colors.inkSoft,
   },
-  signupLink: {
+  signinLink: {
     ...type.label,
     fontSize: 14,
     color: colors.ink,
     textDecorationLine: 'underline',
-    textDecorationColor: colors.marigold,
+    textDecorationColor: colors.sage,
   },
 });
