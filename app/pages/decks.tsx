@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, Pressable, ScrollView, StatusBar,
-  Animated, Easing, useWindowDimensions,
+  Animated, Easing, useWindowDimensions, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
 import { styles, colors } from '../styles/decks.styles';
 import { styles as welcomeStyles } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
-import AddDeckSheet from '../../components/AddDeckSheet';
 
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
 
@@ -27,22 +27,35 @@ export default function DecksScreen() {
   const hPad = clamp(width * 0.06, 18, 32);
 
   const [decks, setDecks] = useState<any[]>([]);
-  const [showAddDeck, setShowAddDeck] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-    }).start();
+  useFocusEffect(
+    useCallback(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+      }).start();
 
-    // Fetch decks from Supabase (table: decks)
-    supabase.from('decks').select('*').order('created_at', { ascending: false })
-      .then(({ data }) => { if (data) setDecks(data); });
-  }, []);
+      refreshDecks();
+    }, [fadeAnim])
+  );
 
   const refreshDecks = async () => {
     const { data } = await supabase.from('decks').select('*').order('created_at', { ascending: false });
     if (data) setDecks(data);
+  };
+
+  const confirmDeleteDeck = (id: string, title: string) => {
+    Alert.alert('Delete Deck', `Are you sure you want to delete "${title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDecks((prev) => prev.filter((d) => d.id !== id));
+          await supabase.from('decks').delete().eq('id', id);
+        },
+      },
+    ]);
   };
 
   return (
@@ -75,7 +88,7 @@ export default function DecksScreen() {
                 {decks.length > 0 ? `${decks.length} deck${decks.length > 1 ? 's' : ''} ready to review` : 'Start learning with flashcards'}
               </Text>
             </View>
-            <Pressable style={styles.addButton} onPress={() => setShowAddDeck(true)}>
+            <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/new')}>
               <Ionicons name="add" size={20} color={colors.paper} />
             </Pressable>
           </View>
@@ -89,17 +102,27 @@ export default function DecksScreen() {
           ) : (
             <View style={styles.deckGrid}>
               {decks.map((deck, i) => {
-                const palette = DECK_COLORS[i % DECK_COLORS.length];
-                const progress = deck.total > 0 ? deck.reviewed / deck.total : 0;
+                const c = DECK_COLORS[i % DECK_COLORS.length];
+                const progress = deck.total > 0 ? (deck.reviewed / deck.total) * 100 : 0;
                 return (
-                  <Pressable key={deck.id} style={styles.deckCard}>
-                    <View style={[styles.deckIconWrap, { backgroundColor: palette.bg }]}>
-                      <Ionicons name="layers" size={20} color={palette.icon} />
+                  <Pressable
+                    key={deck.id}
+                    style={styles.deckCard}
+                    onPress={() => router.push(`/pages/decks/${deck.id}` as any)}
+                    onLongPress={() => confirmDeleteDeck(deck.id, deck.title)}
+                    delayLongPress={400}
+                  >
+                    <View style={[styles.deckIconWrap, { backgroundColor: c.bg }]}>
+                      <Ionicons name="layers" size={24} color={c.icon} />
                     </View>
-                    <Text style={styles.deckTitle} numberOfLines={2}>{deck.title}</Text>
-                    <Text style={styles.deckCount}>{deck.total ?? 0} cards</Text>
-                    <View style={styles.deckProgressBar}>
-                      <View style={[styles.deckProgressFill, { width: `${progress * 100}%`, backgroundColor: palette.icon }]} />
+                    <Text style={styles.deckTitle}>{deck.title}</Text>
+                    
+                    <View style={styles.deckMetaRow}>
+                      <Text style={styles.deckTermCount}>{deck.total} terms</Text>
+                    </View>
+
+                    <View style={styles.progressBarBg}>
+                      <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: c.icon }]} />
                     </View>
                   </Pressable>
                 );
@@ -110,11 +133,6 @@ export default function DecksScreen() {
       </ScrollView>
 
       <BottomNav />
-      <AddDeckSheet
-        visible={showAddDeck}
-        onClose={() => setShowAddDeck(false)}
-        onAdded={refreshDecks}
-      />
     </View>
   );
 }

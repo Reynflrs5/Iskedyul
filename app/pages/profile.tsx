@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, Pressable, ScrollView, StatusBar,
   Animated, Easing, useWindowDimensions, Alert,
@@ -9,7 +9,7 @@ import { styles, colors } from '../styles/profile.styles';
 import { styles as welcomeStyles } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
 
@@ -41,32 +41,34 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const hPad = clamp(width * 0.06, 18, 32);
 
-  const [userName, setUserName] = useState('Student');
+  const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [taskCount, setTaskCount] = useState(0);
   const [classCount, setClassCount] = useState(0);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-    }).start();
+  useFocusEffect(
+    useCallback(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+      }).start();
 
-    async function loadProfile() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUserName(user.user_metadata?.full_name || 'Student');
-        setUserEmail(user.email || '');
+      async function loadProfile() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUserName(user.user_metadata?.full_name || '');
+          setUserEmail(user.email || '');
+        }
+        const { count: tCount } = await supabase.from('tasks').select('*', { count: 'exact', head: true });
+        const { count: cCount } = await supabase.from('classes').select('*', { count: 'exact', head: true });
+        setTaskCount(tCount ?? 0);
+        setClassCount(cCount ?? 0);
       }
-      const { count: tCount } = await supabase.from('tasks').select('*', { count: 'exact', head: true });
-      const { count: cCount } = await supabase.from('classes').select('*', { count: 'exact', head: true });
-      setTaskCount(tCount ?? 0);
-      setClassCount(cCount ?? 0);
-    }
 
-    loadProfile();
-  }, []);
+      loadProfile();
+    }, [fadeAnim])
+  );
 
   const handleSignOut = async () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -106,9 +108,9 @@ export default function ProfileScreen() {
           {/* Avatar hero */}
           <View style={styles.heroSection}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{userName.charAt(0).toUpperCase()}</Text>
+              <Text style={styles.avatarText}>{userName ? userName.charAt(0).toUpperCase() : '?'}</Text>
             </View>
-            <Text style={styles.userName}>{userName}</Text>
+            <Text style={styles.userName}>{userName || ' '}</Text>
             <Text style={styles.userEmail}>{userEmail}</Text>
           </View>
 

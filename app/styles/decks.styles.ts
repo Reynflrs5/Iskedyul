@@ -50,7 +50,19 @@ export const styles = StyleSheet.create({
     marginBottom: spacing.xxs,
   },
   deckTitle: { ...type.label, fontSize: 14, color: colors.ink },
+  deckMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  deckTermCount: { ...type.caption, color: colors.inkSoft },
+  // keep legacy names so nothing else breaks
   deckCount: { ...type.caption, color: colors.inkSoft },
+  progressBarBg: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginTop: spacing.xs,
+    overflow: 'hidden',
+  },
+  progressBarFill: { height: 4, borderRadius: 2 },
+  // legacy aliases
   deckProgressBar: {
     height: 4,
     borderRadius: 2,

@@ -6,49 +6,147 @@ export { colors, type, spacing, radius, shadows };
 export const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.paper,
+        backgroundColor: colors.ink, // hero sits flush at the very top, no seam
     },
     scrollContent: {
-        paddingBottom: spacing.xxl,
+        flexGrow: 1,
     },
 
-    // --- Header ---
-    headerRow: {
+    // --- Hero panel (dark, elevated) ---
+    hero: {
+        backgroundColor: colors.ink,
+        paddingBottom: 64,
+        overflow: 'hidden',
+    },
+    heroAccentRing: {
+        position: 'absolute',
+        borderRadius: 999,
+        backgroundColor: colors.marigold,
+        opacity: 0.08,
+    },
+    heroTopRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
     },
-    greetingCol: {
+    heroGreetingCol: {
         flex: 1,
         paddingRight: spacing.md,
     },
-    eyebrow: {
+    heroEyebrow: {
         ...type.overline,
-        color: colors.inkSoft,
+        color: 'rgba(251,247,239,0.55)', // paper at low opacity
         marginBottom: spacing.xxs,
     },
-    greetingText: {
+    heroGreeting: {
         ...type.h1,
         fontSize: 25,
-        color: colors.ink,
+        color: colors.paper,
     },
-    dateText: {
+    heroSubtitle: {
         ...type.body,
         fontSize: 14,
-        color: colors.inkSoft,
+        color: 'rgba(251,247,239,0.65)',
         marginTop: 2,
+    },
+    heroActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+    },
+    heroIconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: radius.pill,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     avatar: {
         borderRadius: radius.pill,
-        backgroundColor: colors.ink,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.25)',
         alignItems: 'center',
         justifyContent: 'center',
-        ...shadows.soft,
     },
     avatarText: {
         ...type.label,
         color: colors.paper,
         fontSize: 16,
+    },
+
+    // --- Hero mini week strip ---
+    heroWeekRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        justifyContent: 'space-between',
+        marginTop: spacing.lg,
+    },
+    heroWeekBarTrack: {
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        width: 22,
+        height: 30,
+    },
+    heroWeekBar: {
+        width: 5,
+        borderRadius: 3,
+    },
+    heroWeekLabel: {
+        ...type.dayLetter,
+        fontSize: 10,
+        color: 'rgba(251,247,239,0.45)',
+        marginTop: 6,
+    },
+
+    // --- Hero stat chips ---
+    heroStatsRow: {
+        flexDirection: 'row',
+        gap: spacing.sm,
+        marginTop: spacing.lg,
+    },
+    heroStatChip: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderRadius: radius.md,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.sm,
+        alignItems: 'flex-start',
+        gap: 4,
+    },
+    heroStatIconWrap: {
+        width: 28,
+        height: 28,
+        borderRadius: radius.sm,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    heroStatNumber: {
+        ...type.h1,
+        fontSize: 19,
+        color: colors.paper,
+    },
+    heroStatLabel: {
+        ...type.caption,
+        fontSize: 10.5,
+        color: 'rgba(251,247,239,0.6)',
+    },
+
+    // --- Content sheet (floats up over the hero) ---
+    contentSheet: {
+        flex: 1,
+        backgroundColor: colors.paper,
+        borderTopLeftRadius: radius.lg + 6,
+        borderTopRightRadius: radius.lg + 6,
+        marginTop: -40,
+        paddingTop: spacing.lg,
+        ...shadows.cta,
+        shadowOpacity: 0.12,
     },
 
     // --- Section headers ---
@@ -68,41 +166,6 @@ export const styles = StyleSheet.create({
         color: colors.ink,
         textDecorationLine: 'underline',
         textDecorationColor: colors.marigold,
-    },
-
-    // --- Stat cards ---
-    statsRow: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-    },
-    statCard: {
-        flex: 1,
-        backgroundColor: colors.paperRaised,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: colors.border,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.sm,
-        alignItems: 'flex-start',
-        gap: spacing.xxs,
-        ...shadows.soft,
-    },
-    statIconWrap: {
-        width: 34,
-        height: 34,
-        borderRadius: radius.sm,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: spacing.xxs,
-    },
-    statNumber: {
-        ...type.h1,
-        fontSize: 22,
-        color: colors.ink,
-    },
-    statLabel: {
-        ...type.caption,
-        color: colors.inkSoft,
     },
 
     // --- Today's schedule cards ---

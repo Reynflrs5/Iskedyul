@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   View, Text, Pressable, ScrollView, StatusBar,
-  Animated, Easing, useWindowDimensions,
+  Animated, Easing, useWindowDimensions, Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
 import { styles, colors, spacing } from '../styles/schedule.styles';
 import { styles as welcomeStyles } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
-import AddClassSheet from '../../components/AddClassSheet';
 
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
 
@@ -24,22 +24,36 @@ export default function ScheduleScreen() {
   const todayIndex = useMemo(() => (new Date().getDay() + 6) % 7, []);
   const [selectedDay, setSelectedDay] = useState(todayIndex);
   const [classes, setClasses] = useState<any[]>([]);
-  const [showAddClass, setShowAddClass] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-    }).start();
+  useFocusEffect(
+    useCallback(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+      }).start();
 
-    supabase.from('classes').select('*').order('time', { ascending: true })
-      .then(({ data }) => { if (data) setClasses(data); });
-  }, []);
+      refreshClasses();
+    }, [fadeAnim])
+  );
 
   const refreshClasses = async () => {
     const { data } = await supabase.from('classes').select('*').order('time', { ascending: true });
     if (data) setClasses(data);
+  };
+
+  const confirmDeleteClass = (id: string, subject: string) => {
+    Alert.alert('Delete Class', `Are you sure you want to delete "${subject}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setClasses((prev) => prev.filter((c) => c.id !== id));
+          await supabase.from('classes').delete().eq('id', id);
+        },
+      },
+    ]);
   };
 
   const dayClasses = classes.filter((c) => {
@@ -74,7 +88,7 @@ export default function ScheduleScreen() {
           {/* Header */}
           <View style={styles.headerRow}>
             <Text style={styles.pageTitle}>Schedule</Text>
-            <Pressable style={styles.addButton} onPress={() => setShowAddClass(true)}>
+            <Pressable style={styles.addButton} onPress={() => router.push('/pages/classes/new')}>
               <Ionicons name="add" size={20} color={colors.paper} />
             </Pressable>
           </View>
@@ -108,28 +122,30 @@ export default function ScheduleScreen() {
             </View>
           ) : (
             dayClasses.map((c, i) => (
-              <View key={c.id} style={styles.classCard}>
-                <View style={[styles.classAccentBar, { backgroundColor: ACCENT_COLORS[i % ACCENT_COLORS.length] }]} />
-                <View style={styles.classBody}>
-                  <Text style={styles.classSubject}>{c.subject}</Text>
-                  <Text style={styles.classLocation}>{c.location}</Text>
-                  <View style={styles.classTimeRow}>
-                    <Ionicons name="time-outline" size={12} color={colors.inkFaint} />
-                    <Text style={styles.classTime}>{c.time} – {c.time_end}</Text>
-                  </View>
-                </View>
-              </View>
+                  <Pressable
+                    key={c.id}
+                    style={styles.classCard}
+                    onLongPress={() => confirmDeleteClass(c.id, c.subject)}
+                    delayLongPress={400}
+                  >
+                    <View style={[styles.classAccentBar, { backgroundColor: ACCENT_COLORS[i % ACCENT_COLORS.length] }]} />
+                    <View style={styles.classBody}>
+                      <Text style={styles.classSubject}>{c.subject}</Text>
+                      <Text style={styles.classLocation}>{c.location}</Text>
+                      <View style={styles.classTimeRow}>
+                        <Ionicons name="time-outline" size={14} color={colors.inkFaint} />
+                        <Text style={styles.classTime}>
+                          {c.time} {c.time_end ? `- ${c.time_end}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
             ))
           )}
         </Animated.View>
       </ScrollView>
 
       <BottomNav />
-      <AddClassSheet
-        visible={showAddClass}
-        onClose={() => setShowAddClass(false)}
-        onAdded={refreshClasses}
-      />
     </View>
   );
 }

@@ -128,6 +128,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
+    maxHeight: '85%',
     backgroundColor: colors.paper,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,

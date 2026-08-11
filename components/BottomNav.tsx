@@ -1,9 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, Pressable, Animated, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import { colors, type, radius, shadows, spacing } from '../app/styles/welcome.styles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ActionMenuSheet from './ActionMenuSheet';
 
 type NavItem = {
   key: string;
@@ -55,7 +56,8 @@ function NavButton({ item, isActive }: { item: NavItem; isActive: boolean }) {
   );
 }
 
-export default function BottomNav({ onFabPress }: { onFabPress?: () => void }) {
+export default function BottomNav() {
+  const [showMenu, setShowMenu] = useState(false);
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
 
@@ -86,7 +88,7 @@ export default function BottomNav({ onFabPress }: { onFabPress?: () => void }) {
           <Animated.View style={{ transform: [{ scale: fabScale }] }}>
             <Pressable
               style={styles.fab}
-              onPress={onFabPress}
+              onPress={() => setShowMenu(true)}
               onPressIn={fabPressIn}
               onPressOut={fabPressOut}
               hitSlop={6}
@@ -100,6 +102,7 @@ export default function BottomNav({ onFabPress }: { onFabPress?: () => void }) {
           ))}
         </View>
       </View>
+      <ActionMenuSheet visible={showMenu} onClose={() => setShowMenu(false)} />
     </View>
   );
 }
