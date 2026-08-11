@@ -15,13 +15,11 @@ import { styles, colors } from '../styles/dashboard.styles';
 import { styles as welcomeStyles, WEEK_DAYS } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
+import AddTaskSheet from '../../components/AddTaskSheet';
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-// --- We removed the mock data! The app now pulls directly from Supabase ---
-
-const STUDY_STREAK_DAYS = 6;
-const FLASHCARD_DECKS = 4;
+// --- All data is now pulled live from Supabase ---
 
 const PRIORITY_COLOR: Record<string, string> = {
     high: colors.marigold,
@@ -76,8 +74,11 @@ export default function DashboardScreen() {
     const [userName, setUserName] = useState('Student');
     const [tasks, setTasks] = useState<any[]>([]);
     const [classes, setClasses] = useState<any[]>([]);
+    const [classesToday, setClassesToday] = useState(0);
+    const [showAddTask, setShowAddTask] = useState(false);
 
     const tasksDueToday = tasks.filter((t) => !t.done).length;
+    const tasksDone = tasks.filter((t) => t.done).length;
 
     // Fetch data from Supabase when the dashboard loads
     useEffect(() => {
@@ -108,6 +109,11 @@ export default function DashboardScreen() {
 
         fetchDashboardData();
     }, []);
+
+    const refreshTasks = async () => {
+        const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+        if (data) setTasks(data);
+    };
 
     // Update task in state AND in Supabase Database
     const toggleTask = async (id: string, currentStatus: boolean) => {
@@ -240,24 +246,24 @@ export default function DashboardScreen() {
                     <View style={[styles.statsRow, { marginTop: 12, marginBottom: 24 }]}>
                         <View style={styles.statCard}>
                             <View style={[styles.statIconWrap, { backgroundColor: colors.marigoldSoft }]}>
-                                <Ionicons name="flame" size={18} color={colors.marigold} />
-                            </View>
-                            <Text style={styles.statNumber}>{STUDY_STREAK_DAYS}</Text>
-                            <Text style={styles.statLabel}>Day streak</Text>
-                        </View>
-                        <View style={styles.statCard}>
-                            <View style={[styles.statIconWrap, { backgroundColor: colors.periwinkleSoft }]}>
-                                <Ionicons name="checkbox-outline" size={18} color={colors.periwinkle} />
+                                <Ionicons name="time-outline" size={18} color={colors.marigold} />
                             </View>
                             <Text style={styles.statNumber}>{tasksDueToday}</Text>
-                            <Text style={styles.statLabel}>Tasks due</Text>
+                            <Text style={styles.statLabel}>Pending</Text>
                         </View>
                         <View style={styles.statCard}>
                             <View style={[styles.statIconWrap, { backgroundColor: colors.sageSoft }]}>
-                                <Ionicons name="layers-outline" size={18} color={colors.sage} />
+                                <Ionicons name="checkmark-circle-outline" size={18} color={colors.sage} />
                             </View>
-                            <Text style={styles.statNumber}>{FLASHCARD_DECKS}</Text>
-                            <Text style={styles.statLabel}>Decks</Text>
+                            <Text style={styles.statNumber}>{tasksDone}</Text>
+                            <Text style={styles.statLabel}>Done</Text>
+                        </View>
+                        <View style={styles.statCard}>
+                            <View style={[styles.statIconWrap, { backgroundColor: colors.periwinkleSoft }]}>
+                                <Ionicons name="calendar-outline" size={18} color={colors.periwinkle} />
+                            </View>
+                            <Text style={styles.statNumber}>{classesToday}</Text>
+                            <Text style={styles.statLabel}>Classes today</Text>
                         </View>
                     </View>
                 </FadeInSection>
@@ -320,7 +326,12 @@ export default function DashboardScreen() {
                     ))}
                 </FadeInSection>
             </ScrollView>
-            <BottomNav />
+            <BottomNav onFabPress={() => setShowAddTask(true)} />
+            <AddTaskSheet
+                visible={showAddTask}
+                onClose={() => setShowAddTask(false)}
+                onAdded={refreshTasks}
+            />
         </View>
     );
 }
