@@ -6,19 +6,55 @@
  * - Swipe left  → "Nope"   (card slides out red, goes to back of queue)
  * - Done screen when queue is empty
  */
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Animated,
-  PanResponder, Dimensions, StatusBar,
+  View, Text, Pressable, StyleSheet, Animated, Image,
+  PanResponder, Dimensions, StatusBar, Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '../../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../../styles/welcome.styles';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_W * 0.3;
+
+// A press-scale wrapper used by every button on this screen, so tapping
+// "Start Studying," "Study Again," etc. all share the same tactile spring
+// instead of the flat, no-feedback Pressables the screen had before.
+function PressScale({
+  onPress,
+  disabled,
+  style,
+  children,
+}: {
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
+  children: React.ReactNode;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pressIn = () =>
+    !disabled && Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 40 }).start();
+  const pressOut = () =>
+    !disabled && Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
+
+  return (
+    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={pressIn}
+        onPressOut={pressOut}
+        disabled={disabled}
+        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
+}
 
 function FlashCard({
   card,
@@ -81,8 +117,10 @@ function FlashCard({
       },
       onPanResponderRelease: (_, g) => {
         if (g.dx > SWIPE_THRESHOLD) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Animated.timing(swipeAnim, { toValue: SCREEN_W * 1.5, duration: 250, useNativeDriver: true }).start(onSwipeRight);
         } else if (g.dx < -SWIPE_THRESHOLD) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
           Animated.timing(swipeAnim, { toValue: -SCREEN_W * 1.5, duration: 250, useNativeDriver: true }).start(onSwipeLeft);
         } else {
           Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, friction: 6 }).start();
@@ -124,7 +162,7 @@ function FlashCard({
     >
       <Pressable onPress={handleTap} style={{ flex: 1, width: '100%' }}>
         {/* FRONT — Term */}
-        <Animated.View style={[sharedCardStyle, styles.cardFront, { transform: [{ rotateY: frontRotate }] }]}>
+        <Animated.View style={[sharedCardStyle, styles.cardFront, { borderColor: deckColor + '30', transform: [{ rotateY: frontRotate }] }]}>
           {/* Got It label */}
           <Animated.View style={[styles.swipeLabel, styles.swipeLabelRight, { opacity: gotItOpacity }]}>
             <Text style={styles.swipeLabelText}>GOT IT!</Text>
@@ -134,10 +172,12 @@ function FlashCard({
             <Text style={styles.swipeLabelText}>NOPE</Text>
           </Animated.View>
 
-          <Text style={styles.sideLabel}>TERM</Text>
+          <View style={[styles.sideLabelPill, { backgroundColor: deckColor + '18' }]}>
+            <Text style={[styles.sideLabel, { color: deckColor }]}>TERM</Text>
+          </View>
           <Text style={styles.cardTerm}>{card.term}</Text>
-          <View style={[styles.tapHint, { backgroundColor: deckColor + '20' }]}>
-            <Ionicons name="sync-outline" size={14} color={deckColor} />
+          <View style={[styles.tapHint, { backgroundColor: deckColor + '18' }]}>
+            <Ionicons name="sync-outline" size={13} color={deckColor} />
             <Text style={[styles.tapHintText, { color: deckColor }]}>Tap to flip</Text>
           </View>
         </Animated.View>
@@ -146,7 +186,9 @@ function FlashCard({
         <Animated.View
           style={[sharedCardStyle, styles.cardBack, { backgroundColor: deckColor, transform: [{ rotateY: backRotate }] }]}
         >
-          <Text style={styles.sideLabelLight}>DEFINITION</Text>
+          <View style={styles.sideLabelPillLight}>
+            <Text style={styles.sideLabelLight}>DEFINITION</Text>
+          </View>
           <Text style={styles.cardDefinition}>{card.definition}</Text>
         </Animated.View>
       </Pressable>
@@ -160,10 +202,18 @@ export default function StudyScreen() {
 
   const [queue, setQueue] = useState<any[]>([]);
   const [reviewedCount, setReviewedCount] = useState(0);
+  const [gotItCount, setGotItCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [deckTitle, setDeckTitle] = useState('');
   const [deckColor, setDeckColor] = useState(colors.marigold);
   const [finished, setFinished] = useState(false);
+  const [ready, setReady] = useState(false); // true = show intro, false = show cards
+  const [started, setStarted] = useState(false); // user pressed Start
+
+  // --- Entrance motion, shared across the intro / study / done states ---
+  const introAnim = useRef(new Animated.Value(0)).current;
+  const studyAnim = useRef(new Animated.Value(0)).current;
+  const doneAnim = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
     useCallback(() => {
@@ -171,38 +221,60 @@ export default function StudyScreen() {
     }, [id])
   );
 
+  useEffect(() => {
+    if (!started) {
+      introAnim.setValue(0);
+      Animated.timing(introAnim, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    } else if (!finished) {
+      studyAnim.setValue(0);
+      Animated.timing(studyAnim, { toValue: 1, duration: 380, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    }
+  }, [started, ready]);
+
+  useEffect(() => {
+    if (finished) {
+      doneAnim.setValue(0);
+      Animated.spring(doneAnim, { toValue: 1, useNativeDriver: true, friction: 7, tension: 60 }).start();
+    }
+  }, [finished]);
+
   const loadCards = async () => {
+    setReady(false);
+    setStarted(false);
     const { data: deckData } = await supabase.from('decks').select('*').eq('id', id).single();
     if (deckData) {
       setDeckTitle(deckData.title);
       const c = deckData.color === 'sage' ? colors.sage
         : deckData.color === 'periwinkle' ? colors.periwinkle
-        : deckData.color === 'purple' ? '#A855F7'
-        : deckData.color === 'red' ? '#EF4444'
-        : deckData.color === 'blue' ? '#3B82F6'
-        : colors.marigold;
+          : deckData.color === 'purple' ? '#A855F7'
+            : deckData.color === 'red' ? colors.error
+              : deckData.color === 'blue' ? '#3B82F6'
+                : colors.marigold;
       setDeckColor(c);
     }
 
     const { data } = await supabase.from('cards').select('*').eq('deck_id', id).order('created_at');
     if (data && data.length > 0) {
-      // Shuffle for a fresh study session
       const shuffled = [...data].sort(() => Math.random() - 0.5);
       setQueue(shuffled);
       setTotalCount(shuffled.length);
       setReviewedCount(0);
+      setGotItCount(0);
       setFinished(false);
     }
+    setReady(true); // cards loaded → show intro screen
   };
 
   const handleSwipeRight = async () => {
     const newQueue = queue.slice(1);
     const newReviewed = reviewedCount + 1;
+    const newGotIt = gotItCount + 1;
     setReviewedCount(newReviewed);
+    setGotItCount(newGotIt);
     setQueue(newQueue);
     if (newQueue.length === 0) {
       setFinished(true);
-      await supabase.from('decks').update({ reviewed: newReviewed }).eq('id', id);
+      await supabase.from('decks').update({ reviewed: newGotIt }).eq('id', id);
     }
   };
 
@@ -213,27 +285,136 @@ export default function StudyScreen() {
 
   const progressPct = totalCount > 0 ? (reviewedCount / totalCount) * 100 : 0;
 
+  // --- Intro / Splash Screen (shown until user taps Start) ---
+  if (!started) {
+    return (
+      <View style={[styles.introWhiteContainer, { paddingTop: insets.top, paddingBottom: insets.bottom + 16 }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+
+        {/* ── Owl mascot + text — no opacity animation so text is always visible ── */}
+        <View style={styles.introCenter}>
+          <Image
+            source={require('../../../../assets/images/IskedyulThink.png')}
+            style={styles.thinkImageWhite}
+            resizeMode="contain"
+          />
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#132A4C', textAlign: 'center', marginTop: 16 }}>
+            {ready ? deckTitle : 'Loading deck…'}
+          </Text>
+          <Text style={{ fontSize: 14, color: '#4A5A76', textAlign: 'center', marginTop: 6 }}>
+            {ready
+              ? `${totalCount} card${totalCount !== 1 ? 's' : ''} ready`
+              : 'Fetching your flashcards…'}
+          </Text>
+        </View>
+
+        {/* ── Back & Continue buttons — plain Pressable, always visible ── */}
+        <View style={{ paddingHorizontal: spacing.lg, flexDirection: 'row', gap: spacing.sm }}>
+          <Pressable
+            onPress={() => router.back()}
+            style={{
+              flex: 1,
+              borderRadius: 14,
+              paddingVertical: 16,
+              borderWidth: 1.5,
+              borderColor: '#E4DDCB',
+              backgroundColor: '#FFFFFF',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              gap: 8,
+            }}
+          >
+            <Ionicons name="arrow-back" size={18} color="#132A4C" />
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#132A4C' }}>Back</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => ready && setStarted(true)}
+            style={{
+              flex: 1.5,
+              borderRadius: 14,
+              paddingVertical: 16,
+              backgroundColor: ready ? deckColor : '#AAAAAA',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              gap: 8,
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFFFFF' }}>
+              {ready ? 'Continue' : 'Loading…'}
+            </Text>
+            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   if (finished) {
+    const nope = totalCount - gotItCount;
+    const pct = totalCount > 0 ? Math.round((gotItCount / totalCount) * 100) : 0;
+    const emoji = pct === 100 ? '🏆' : pct >= 70 ? '🎉' : pct >= 40 ? '💪' : '📖';
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar barStyle="dark-content" backgroundColor={colors.paper} />
-        <View style={styles.doneScreen}>
-          <View style={[styles.doneIcon, { backgroundColor: deckColor + '22' }]}>
-            <Ionicons name="checkmark-circle" size={56} color={deckColor} />
+        <Animated.View
+          style={[
+            styles.doneScreen,
+            {
+              opacity: doneAnim,
+              transform: [{ scale: doneAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
+            },
+          ]}
+        >
+          {/* Icon */}
+          <View style={[styles.doneIcon, { backgroundColor: deckColor + '1F' }]}>
+            <Text style={{ fontSize: 48 }}>{emoji}</Text>
           </View>
-          <Text style={styles.doneTitle}>Session Complete! 🎉</Text>
-          <Text style={styles.doneSub}>You studied {totalCount} card{totalCount !== 1 ? 's' : ''} in this deck.</Text>
+
+          <Text style={styles.doneTitle}>Session Complete!</Text>
+          <Text style={styles.doneSub}>
+            You studied all {totalCount} card{totalCount !== 1 ? 's' : ''}
+          </Text>
+
+          {/* Score breakdown — icon-in-circle to match the app's stat-card language */}
+          <View style={styles.scoreRow}>
+            <View style={styles.scoreChip}>
+              <View style={[styles.scoreIconWrap, { backgroundColor: colors.sageSoft }]}>
+                <Ionicons name="checkmark" size={18} color={colors.sage} />
+              </View>
+              <Text style={[styles.scoreNumber, { color: colors.sage }]}>{gotItCount}</Text>
+              <Text style={styles.scoreLabel}>Got it</Text>
+            </View>
+            <View style={styles.scoreDivider} />
+            <View style={styles.scoreChip}>
+              <View style={[styles.scoreIconWrap, { backgroundColor: colors.errorSoft }]}>
+                <Ionicons name="close" size={18} color={colors.error} />
+              </View>
+              <Text style={[styles.scoreNumber, { color: colors.error }]}>{nope}</Text>
+              <Text style={styles.scoreLabel}>Nope</Text>
+            </View>
+            <View style={styles.scoreDivider} />
+            <View style={styles.scoreChip}>
+              <View style={[styles.scoreIconWrap, { backgroundColor: deckColor + '1F' }]}>
+                <Ionicons name="stats-chart" size={18} color={deckColor} />
+              </View>
+              <Text style={[styles.scoreNumber, { color: deckColor }]}>{pct}%</Text>
+              <Text style={styles.scoreLabel}>Score</Text>
+            </View>
+          </View>
+
           <View style={styles.doneActions}>
-            <Pressable style={[styles.doneBtn, { borderColor: colors.border }]} onPress={loadCards}>
+            <PressScale style={[styles.doneBtn, { backgroundColor: colors.paperRaised, borderColor: colors.border }]} onPress={loadCards}>
               <Ionicons name="refresh" size={16} color={colors.ink} />
               <Text style={[styles.doneBtnText, { color: colors.ink }]}>Study Again</Text>
-            </Pressable>
-            <Pressable style={[styles.doneBtn, { backgroundColor: deckColor, borderColor: deckColor }]} onPress={() => router.back()}>
-              <Ionicons name="checkmark" size={16} color="#fff" />
-              <Text style={[styles.doneBtnText, { color: '#fff' }]}>Done</Text>
-            </Pressable>
+            </PressScale>
+            <PressScale style={[styles.doneBtn, { backgroundColor: deckColor, borderColor: deckColor }]} onPress={() => router.back()}>
+              <Ionicons name="checkmark" size={16} color={colors.paper} />
+              <Text style={[styles.doneBtnText, { color: colors.paper }]}>Done</Text>
+            </PressScale>
           </View>
-        </View>
+        </Animated.View>
       </View>
     );
   }
@@ -244,29 +425,44 @@ export default function StudyScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.paper} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="close" size={24} color={colors.ink} />
-        </Pressable>
-        <View style={{ flex: 1, marginHorizontal: spacing.md }}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{deckTitle}</Text>
-          <Text style={styles.headerSub}>{reviewedCount} / {totalCount} known</Text>
+      <Animated.View
+        style={{
+          opacity: studyAnim,
+          transform: [{ translateY: studyAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+        }}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={10}>
+            <Ionicons name="close" size={24} color={colors.ink} />
+          </Pressable>
+          <View style={{ flex: 1, marginHorizontal: spacing.md }}>
+            <View style={styles.headerTitleRow}>
+              <View style={[styles.headerDot, { backgroundColor: deckColor }]} />
+              <Text style={styles.headerTitle} numberOfLines={1}>{deckTitle}</Text>
+            </View>
+            <Text style={styles.headerSub}>{reviewedCount} / {totalCount} known</Text>
+          </View>
+          <Text style={[styles.headerPct, { color: deckColor }]}>{Math.round(progressPct)}%</Text>
         </View>
-      </View>
 
-      {/* Progress bar */}
-      <View style={styles.progressTrack}>
-        <Animated.View
-          style={[styles.progressFill, { width: `${progressPct}%`, backgroundColor: deckColor }]}
-        />
-      </View>
+        {/* Progress bar */}
+        <View style={styles.progressTrack}>
+          <Animated.View
+            style={[styles.progressFill, { width: `${progressPct}%`, backgroundColor: deckColor }]}
+          />
+        </View>
+      </Animated.View>
 
       {/* Card area */}
       <View style={styles.cardArea}>
-        {/* Next card shadow peek */}
+        {/* Layered stack peek — two offset cards behind the active one, so it
+            reads as a deck rather than a single blurred rectangle. */}
+        {queue.length > 2 && (
+          <View style={[styles.cardPeekOuter, { backgroundColor: deckColor + '14' }]} />
+        )}
         {queue.length > 1 && (
-          <View style={[styles.cardPeek, { backgroundColor: deckColor + '33' }]} />
+          <View style={[styles.cardPeekInner, { backgroundColor: deckColor + '28' }]} />
         )}
 
         {currentCard && (
@@ -282,12 +478,12 @@ export default function StudyScreen() {
 
       {/* Swipe hint */}
       <View style={[styles.hintRow, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-        <View style={styles.hintChip}>
-          <Ionicons name="arrow-back" size={14} color="#EF4444" />
-          <Text style={[styles.hintText, { color: '#EF4444' }]}>Nope</Text>
+        <View style={[styles.hintChip, { backgroundColor: colors.errorSoft }]}>
+          <Ionicons name="arrow-back" size={14} color={colors.error} />
+          <Text style={[styles.hintText, { color: colors.error }]}>Nope</Text>
         </View>
         <Text style={styles.hintCenter}>{queue.length} left</Text>
-        <View style={styles.hintChip}>
+        <View style={[styles.hintChip, { backgroundColor: colors.sageSoft }]}>
           <Text style={[styles.hintText, { color: colors.sage }]}>Got it</Text>
           <Ionicons name="arrow-forward" size={14} color={colors.sage} />
         </View>
@@ -301,12 +497,59 @@ const CARD_H = CARD_W * 1.35;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
+
+  // Intro — white full-screen layout
+  introWhiteContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    justifyContent: 'space-between',
+  },
+  introCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  thinkImageWhite: {
+    width: 180,
+    height: 180,
+  },
+  introWhiteTitle: {
+    ...type.h1,
+    color: colors.ink,
+    textAlign: 'center',
+    fontSize: 26,
+  },
+  introWhiteSub: {
+    ...type.body,
+    color: colors.inkSoft,
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  introNextBtn: {
+    flex: 1,
+    borderRadius: radius.md,
+    paddingVertical: 16,
+    marginBottom: spacing.sm,
+    ...shadows.soft,
+  },
+  introBackBtn: {
+    backgroundColor: colors.paperRaised,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  introNextBtnText: { ...type.label, fontSize: 16, color: colors.paper },
+
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
   },
-  headerTitle: { ...type.label, fontSize: 15, color: colors.ink },
-  headerSub: { ...type.caption, color: colors.inkSoft },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerDot: { width: 7, height: 7, borderRadius: 3.5 },
+  headerTitle: { ...type.label, fontSize: 15, color: colors.ink, flexShrink: 1 },
+  headerSub: { ...type.caption, color: colors.inkSoft, marginTop: 2 },
+  headerPct: { ...type.label, fontSize: 14, fontWeight: '700' },
 
   progressTrack: {
     height: 4, backgroundColor: colors.border,
@@ -317,41 +560,61 @@ const styles = StyleSheet.create({
   cardArea: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
   },
-  cardPeek: {
+  cardPeekOuter: {
     position: 'absolute',
-    width: CARD_W - 20,
-    height: CARD_H - 20,
+    width: CARD_W - 36,
+    height: CARD_H - 36,
     borderRadius: radius.xl,
-    bottom: -8,
+    bottom: -18,
+    transform: [{ scale: 0.94 }],
+  },
+  cardPeekInner: {
+    position: 'absolute',
+    width: CARD_W - 18,
+    height: CARD_H - 18,
+    borderRadius: radius.xl,
+    bottom: -9,
+    transform: [{ scale: 0.97 }],
   },
 
   // Shared card face styles
   cardFront: {
     backgroundColor: colors.paperRaised,
     borderWidth: 1.5,
-    borderColor: colors.border,
   },
   cardBack: {
     // background set dynamically from deckColor
   },
-  sideLabel: {
-    ...type.overline,
-    color: colors.inkFaint,
+  sideLabelPill: {
     position: 'absolute',
     top: spacing.lg,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  sideLabel: {
+    ...type.overline,
+    fontSize: 10.5,
+  },
+  sideLabelPillLight: {
+    position: 'absolute',
+    top: spacing.lg,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   sideLabelLight: {
     ...type.overline,
-    color: 'rgba(255,255,255,0.65)',
-    position: 'absolute',
-    top: spacing.lg,
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.85)',
   },
   cardTerm: {
-    ...type.h1, fontSize: 26, color: colors.ink,
-    textAlign: 'center', lineHeight: 34,
+    ...type.h1, fontSize: 27, color: colors.ink,
+    textAlign: 'center', lineHeight: 35, fontWeight: '700',
   },
   cardDefinition: {
-    ...type.body, fontSize: 18, color: '#fff',
+    ...type.body, fontSize: 18, color: colors.paper,
     textAlign: 'center', lineHeight: 28,
   },
   tapHint: {
@@ -375,7 +638,7 @@ const styles = StyleSheet.create({
   },
   swipeLabelLeft: {
     left: spacing.md,
-    backgroundColor: '#FEE2E2', borderColor: '#EF4444',
+    backgroundColor: colors.errorSoft, borderColor: colors.error,
     transform: [{ rotate: '15deg' }],
   },
   swipeLabelText: { ...type.label, fontSize: 13 },
@@ -384,7 +647,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.xl, paddingTop: spacing.md,
   },
-  hintChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  hintChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
   hintText: { ...type.label, fontSize: 13 },
   hintCenter: { ...type.caption, color: colors.inkSoft },
 
@@ -399,10 +666,44 @@ const styles = StyleSheet.create({
   },
   doneTitle: { ...type.h1, color: colors.ink, textAlign: 'center' },
   doneSub: { ...type.body, color: colors.inkSoft, textAlign: 'center' },
-  doneActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  // Score breakdown
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.paperRaised,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    width: '100%',
+    ...shadows.soft,
+  },
+  scoreChip: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  scoreIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  scoreDivider: {
+    width: 1,
+    height: 44,
+    backgroundColor: colors.border,
+  },
+  scoreNumber: { ...type.h1, fontSize: 22 },
+  scoreLabel: { ...type.caption, fontSize: 11, color: colors.inkSoft },
+
+  doneActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, width: '100%' },
   doneBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, borderRadius: radius.md, paddingVertical: 13,
+    flex: 1, borderRadius: radius.md, paddingVertical: 13,
     borderWidth: 1.5, ...shadows.soft,
   },
   doneBtnText: { ...type.label, fontSize: 14 },

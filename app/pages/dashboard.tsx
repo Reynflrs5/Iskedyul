@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { styles, colors } from '../styles/dashboard.styles';
 import { WEEK_DAYS } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
@@ -232,12 +232,26 @@ export default function DashboardScreen() {
                                 </Text>
                             </View>
                             <View style={styles.heroActions}>
-                                <Pressable style={styles.heroIconButton}>
+                                <Pressable
+                                  style={styles.heroIconButton}
+                                  onPress={() => {
+                                    const pendingCount = tasks.filter((t) => !t.done).length;
+                                    Alert.alert(
+                                      '🔔 Notifications',
+                                      pendingCount > 0
+                                        ? `You have ${pendingCount} pending task${pendingCount > 1 ? 's' : ''}.`
+                                        : 'No pending notifications.',
+                                      [{ text: 'OK' }]
+                                    );
+                                  }}
+                                >
                                     <Ionicons name="notifications-outline" size={18} color={colors.paper} />
                                 </Pressable>
-                                <View style={[styles.avatar, { width: 40, height: 40 }]}>
-                                    <Text style={styles.avatarText}>{userName ? userName.charAt(0).toUpperCase() : '?'}</Text>
-                                </View>
+                                <Pressable onPress={() => router.push('/pages/profile' as any)}>
+                                  <View style={[styles.avatar, { width: 40, height: 40 }]}>
+                                      <Text style={styles.avatarText}>{userName ? userName.charAt(0).toUpperCase() : '?'}</Text>
+                                  </View>
+                                </Pressable>
                             </View>
                         </View>
 
@@ -310,7 +324,7 @@ export default function DashboardScreen() {
                         <FadeInSection anim={scheduleAnim}>
                             <View style={styles.sectionRow}>
                                 <Text style={styles.sectionTitle}>Today's Schedule</Text>
-                                <Pressable>
+                                <Pressable onPress={() => router.push('/pages/schedule' as any)}>
                                     <Text style={styles.sectionLink}>See all</Text>
                                 </Pressable>
                             </View>
@@ -348,7 +362,7 @@ export default function DashboardScreen() {
                         <FadeInSection anim={tasksAnim}>
                             <View style={[styles.sectionRow, { marginTop: 8 }]}>
                                 <Text style={styles.sectionTitle}>Upcoming Tasks</Text>
-                                <Pressable>
+                                <Pressable onPress={() => router.push('/pages/decks' as any)}>
                                     <Text style={styles.sectionLink}>See all</Text>
                                 </Pressable>
                             </View>

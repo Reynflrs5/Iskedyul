@@ -1,10 +1,11 @@
 /**
  * Add Card Screen — add a term + definition to a deck.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet,
-  TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert,
+  TextInput, KeyboardAvoidingView, Platform, ScrollView,
+  Animated, Easing, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,20 +13,113 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../../styles/welcome.styles';
 
+// Shared press-scale wrapper — same pattern as the Deck Detail and Study
+// screens. Worth lifting into components/PressScale.tsx now that it's in
+// three files.
+function PressScale({
+  onPress,
+  disabled,
+  style,
+  children,
+}: {
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
+  children: React.ReactNode;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pressIn = () =>
+    !disabled && Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 40 }).start();
+  const pressOut = () =>
+    !disabled && Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
+
+  return (
+    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={pressIn}
+        onPressOut={pressOut}
+        disabled={disabled}
+        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export default function AddCardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+
+  const [deckTitle, setDeckTitle] = useState('');
+  const [deckColor, setDeckColor] = useState(colors.marigold);
 
   const [term, setTerm] = useState('');
   const [definition, setDefinition] = useState('');
   const [loading, setLoading] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
+  const [termError, setTermError] = useState(false);
+  const [defError, setDefError] = useState(false);
+
+  // --- Entrance + focus/feedback animation ---
+  const contentAnim = useRef(new Animated.Value(0)).current;
+  const termFocusAnim = useRef(new Animated.Value(0)).current;
+  const defFocusAnim = useRef(new Animated.Value(0)).current;
+  const termShake = useRef(new Animated.Value(0)).current;
+  const defShake = useRef(new Animated.Value(0)).current;
+  const badgeScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.timing(contentAnim, {
+      toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start();
+
+    async function loadDeckMeta() {
+      const { data } = await supabase.from('decks').select('title, color').eq('id', id).single();
+      if (data) {
+        setDeckTitle(data.title);
+        const c = data.color === 'sage' ? colors.sage
+          : data.color === 'periwinkle' ? colors.periwinkle
+            : data.color === 'purple' ? '#A855F7'
+              : data.color === 'red' ? colors.error
+                : data.color === 'blue' ? '#3B82F6'
+                  : colors.marigold;
+        setDeckColor(c);
+      }
+    }
+    loadDeckMeta();
+  }, [id]);
+
+  const shakeField = (anim: Animated.Value) => {
+    anim.setValue(0);
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 1, duration: 55, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: -1, duration: 55, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 1, duration: 55, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 0, duration: 55, easing: Easing.linear, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const pulseBadge = () => {
+    badgeScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(badgeScale, { toValue: 1.18, useNativeDriver: true, speed: 60 }),
+      Animated.spring(badgeScale, { toValue: 1, useNativeDriver: true, friction: 4 }),
+    ]).start();
+  };
 
   const handleSave = async (andClose = false) => {
-    if (!term.trim() || !definition.trim()) {
-      Alert.alert('Missing Fields', 'Please fill in both the term and definition.');
+    const missingTerm = !term.trim();
+    const missingDef = !definition.trim();
+    if (missingTerm || missingDef) {
+      setTermError(missingTerm);
+      setDefError(missingDef);
+      if (missingTerm) shakeField(termShake);
+      if (missingDef) shakeField(defShake);
       return;
     }
+
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('cards').insert({
@@ -37,14 +131,32 @@ export default function AddCardScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Error', error.message);
+      // Inline banner keeps this consistent with the rest of the app's
+      // forms instead of a native Alert popup.
+      setTermError(true);
+      shakeField(termShake);
     } else {
       setSavedCount((n) => n + 1);
+      pulseBadge();
       setTerm('');
       setDefinition('');
+      setTermError(false);
+      setDefError(false);
       if (andClose) router.back();
     }
   };
+
+  const termBorderColor = termFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [termError ? colors.error : colors.border, deckColor],
+  });
+  const defBorderColor = defFocusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [defError ? colors.error : colors.border, deckColor],
+  });
+
+  const animateFocus = (anim: Animated.Value, toValue: number) =>
+    Animated.timing(anim, { toValue, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
 
   return (
     <KeyboardAvoidingView
@@ -53,65 +165,107 @@ export default function AddCardScreen() {
     >
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={10}>
-            <Ionicons name="arrow-back" size={24} color={colors.ink} />
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: contentAnim,
+              transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+            },
+          ]}
+        >
+          <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={colors.ink} />
           </Pressable>
-          <Text style={styles.headerTitle}>Add Card</Text>
+          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+            <Text style={styles.headerTitle}>Add Card</Text>
+            {!!deckTitle && <Text style={styles.headerSub} numberOfLines={1}>{deckTitle}</Text>}
+          </View>
           {savedCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{savedCount} saved</Text>
-            </View>
+            <Animated.View style={[styles.badge, { backgroundColor: deckColor + '1F', transform: [{ scale: badgeScale }] }]}>
+              <Ionicons name="checkmark-circle" size={13} color={deckColor} />
+              <Text style={[styles.badgeText, { color: deckColor }]}>{savedCount} saved</Text>
+            </Animated.View>
           )}
-        </View>
+        </Animated.View>
 
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Term */}
-          <Text style={styles.label}>TERM</Text>
-          <TextInput
-            style={styles.termInput}
-            placeholder="e.g. Mitochondria"
-            placeholderTextColor={colors.inkFaint}
-            value={term}
-            onChangeText={setTerm}
-            autoFocus
-            returnKeyType="next"
-            multiline={false}
-          />
+          <Animated.View style={{ opacity: contentAnim }}>
+            {/* Term */}
+            <Text style={styles.label}>TERM</Text>
+            <Animated.View style={{ transform: [{ translateX: termShake.interpolate({ inputRange: [-1, 0, 1], outputRange: [-6, 0, 6] }) }] }}>
+              <Animated.View style={[styles.termInputWrap, { borderBottomColor: termBorderColor }]}>
+                <TextInput
+                  style={styles.termInput}
+                  placeholder="e.g. Mitochondria"
+                  placeholderTextColor={colors.inkFaint}
+                  value={term}
+                  onChangeText={(t) => { setTerm(t); if (termError && t.trim()) setTermError(false); }}
+                  onFocus={() => animateFocus(termFocusAnim, 1)}
+                  onBlur={() => animateFocus(termFocusAnim, 0)}
+                  autoFocus
+                  returnKeyType="next"
+                  multiline={false}
+                />
+              </Animated.View>
+            </Animated.View>
+            {termError && (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={12} color={colors.error} />
+                <Text style={styles.errorText}>Term can't be empty</Text>
+              </View>
+            )}
 
-          {/* Definition */}
-          <Text style={[styles.label, { marginTop: spacing.lg }]}>DEFINITION</Text>
-          <TextInput
-            style={styles.defInput}
-            placeholder="e.g. The powerhouse of the cell"
-            placeholderTextColor={colors.inkFaint}
-            value={definition}
-            onChangeText={setDefinition}
-            multiline
-            textAlignVertical="top"
-          />
+            {/* Definition */}
+            <Text style={[styles.label, { marginTop: spacing.lg }]}>DEFINITION</Text>
+            <Animated.View style={{ transform: [{ translateX: defShake.interpolate({ inputRange: [-1, 0, 1], outputRange: [-6, 0, 6] }) }] }}>
+              <Animated.View style={[styles.defInputWrap, { borderColor: defBorderColor }]}>
+                <TextInput
+                  style={styles.defInput}
+                  placeholder="e.g. The powerhouse of the cell"
+                  placeholderTextColor={colors.inkFaint}
+                  value={definition}
+                  onChangeText={(t) => { setDefinition(t); if (defError && t.trim()) setDefError(false); }}
+                  onFocus={() => animateFocus(defFocusAnim, 1)}
+                  onBlur={() => animateFocus(defFocusAnim, 0)}
+                  multiline
+                  textAlignVertical="top"
+                />
+              </Animated.View>
+            </Animated.View>
+            {defError && (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={12} color={colors.error} />
+                <Text style={styles.errorText}>Definition can't be empty</Text>
+              </View>
+            )}
+          </Animated.View>
         </ScrollView>
 
         {/* Footer actions */}
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <Pressable
+          <PressScale
             style={[styles.addMoreBtn, loading && { opacity: 0.6 }]}
             onPress={() => handleSave(false)}
             disabled={loading}
           >
             <Ionicons name="add-circle-outline" size={18} color={colors.ink} />
             <Text style={styles.addMoreText}>Save & Add Another</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.doneBtn, loading && { opacity: 0.6 }]}
+          </PressScale>
+          <PressScale
+            style={[styles.doneBtn, { backgroundColor: deckColor }, loading && { opacity: 0.6 }]}
             onPress={() => handleSave(true)}
             disabled={loading}
           >
-            <Text style={styles.doneBtnText}>{loading ? 'Saving...' : 'Save & Done'}</Text>
-          </Pressable>
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.paper} />
+            ) : (
+              <Text style={styles.doneBtnText}>Save & Done</Text>
+            )}
+          </PressScale>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -121,30 +275,46 @@ export default function AddCardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
   header: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  headerTitle: { ...type.h2, color: colors.ink, flex: 1 },
-  badge: {
-    backgroundColor: colors.sageSoft, borderRadius: radius.pill,
-    paddingHorizontal: 10, paddingVertical: 4,
+  backBtn: {
+    width: 36, height: 36, borderRadius: radius.pill,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.paperRaised, borderWidth: 1, borderColor: colors.border,
   },
-  badgeText: { ...type.caption, color: colors.sage, fontWeight: '700' },
+  headerTitle: { ...type.h2, color: colors.ink },
+  headerSub: { ...type.caption, color: colors.inkSoft, marginTop: 1 },
+  badge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  badgeText: { ...type.caption, fontWeight: '700' },
 
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   label: { ...type.overline, color: colors.inkSoft, marginBottom: spacing.xs },
+  termInputWrap: {
+    borderBottomWidth: 2,
+  },
   termInput: {
     ...type.h2, fontSize: 20, color: colors.ink,
-    borderBottomWidth: 2, borderBottomColor: colors.border,
     paddingVertical: spacing.sm, paddingHorizontal: 0,
+  },
+  defInputWrap: {
+    backgroundColor: colors.paperRaised, borderRadius: radius.md,
+    borderWidth: 1.5,
   },
   defInput: {
     ...type.body, fontSize: 16, color: colors.ink,
-    backgroundColor: colors.paperRaised, borderRadius: radius.md,
-    borderWidth: 1.5, borderColor: colors.border,
     padding: spacing.md, minHeight: 120,
   },
+  errorRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: spacing.xs,
+  },
+  errorText: { ...type.caption, color: colors.error },
 
   footer: {
     flexDirection: 'row', gap: spacing.sm,
@@ -152,16 +322,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: colors.border,
   },
   addMoreBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, borderRadius: radius.md, paddingVertical: 13,
+    flex: 1, borderRadius: radius.md, paddingVertical: 13,
     borderWidth: 1.5, borderColor: colors.border,
     backgroundColor: colors.paperRaised,
   },
   addMoreText: { ...type.label, color: colors.ink, fontSize: 14 },
   doneBtn: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    borderRadius: radius.md, paddingVertical: 13,
-    backgroundColor: colors.ink, ...shadows.soft,
+    flex: 1, borderRadius: radius.md, paddingVertical: 13,
+    ...shadows.soft,
   },
   doneBtnText: { ...type.label, color: colors.paper, fontSize: 14 },
 });

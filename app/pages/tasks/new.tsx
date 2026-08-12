@@ -21,28 +21,27 @@ const QUICK_DUE = [
 ];
 
 function PriorityChip({ option, isSelected, onPress }: any) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const pressIn = () => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 50 }).start();
-  const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
-
   return (
-    <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
-      <Pressable
-        style={[
-          styles.priorityChip,
-          {
-            backgroundColor: isSelected ? option.bg : colors.paperRaised,
-            borderColor: isSelected ? option.color : colors.border,
-          },
-        ]}
-        onPress={onPress}
-        onPressIn={pressIn}
-        onPressOut={pressOut}
-      >
-        <Ionicons name={isSelected ? 'flag' : 'flag-outline'} size={14} color={isSelected ? option.color : colors.inkFaint} />
-        <Text style={[styles.priorityLabel, { color: isSelected ? option.color : colors.inkSoft }]}>{option.label}</Text>
-      </Pressable>
-    </Animated.View>
+    <Pressable
+      onPress={onPress}
+      style={{
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 12,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        backgroundColor: isSelected ? option.bg : '#FFFFFF',
+        borderColor: isSelected ? option.color : '#E4DDCB',
+      }}
+    >
+      <Ionicons name={isSelected ? 'flag' : 'flag-outline'} size={14} color={isSelected ? option.color : '#8B96A8'} />
+      <Text style={{ fontSize: 13, fontWeight: '600', color: isSelected ? option.color : '#4A5A76' }}>
+        {option.label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -95,7 +94,7 @@ export default function NewTaskScreen() {
       user_id: user?.id,
     });
     setLoading(false);
-    
+
     if (error) {
       console.warn('AddTask error:', error.message);
     } else {
@@ -189,29 +188,28 @@ export default function NewTaskScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  headerTitle: { ...type.h2, color: colors.ink },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#132A4C' },
   content: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  
-  sectionLabel: { ...type.caption, color: colors.inkSoft, fontWeight: '600', marginTop: spacing.md, marginBottom: spacing.sm },
+
+  sectionLabel: { fontSize: 12, fontWeight: '600', color: '#4A5A76', marginTop: spacing.md, marginBottom: spacing.sm, letterSpacing: 0.5 },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: -spacing.xs, marginBottom: spacing.xs },
-  errorText: { ...type.caption, color: colors.error },
-  
+  errorText: { fontSize: 12, color: colors.error },
+
   quickDueRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
-  quickDueChip: { paddingVertical: 8, paddingHorizontal: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paperRaised },
-  quickDueChipSelected: { backgroundColor: colors.ink, borderColor: colors.ink },
-  quickDueText: { ...type.caption, fontSize: 12, color: colors.inkSoft, fontWeight: '600' },
-  quickDueTextSelected: { color: colors.paper },
-  
-  datePickerBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.paperRaised, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, paddingHorizontal: spacing.md, height: 48, gap: spacing.sm, marginBottom: spacing.md },
-  datePickerText: { ...type.body, fontSize: 15, color: colors.inkFaint },
-  
+  quickDueChip: { paddingVertical: 8, paddingHorizontal: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FFFFFF' },
+  quickDueChipSelected: { backgroundColor: '#132A4C', borderColor: '#132A4C' },
+  quickDueText: { fontSize: 12, fontWeight: '600', color: '#4A5A76' },
+  quickDueTextSelected: { color: '#FFFFFF' },
+
+  datePickerBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border, paddingHorizontal: spacing.md, height: 48, gap: spacing.sm, marginBottom: spacing.md },
+  datePickerText: { fontSize: 15, color: '#8B96A8' },
+
   priorityRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   priorityChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1.5 },
-  priorityLabel: { ...type.label, fontSize: 13 },
-  
+
   submitShadowWrap: { borderRadius: radius.md, ...shadows.soft },
-  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.ink, borderRadius: radius.md, paddingVertical: 14 },
+  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#132A4C', borderRadius: radius.md, paddingVertical: 14 },
   submitBtnDisabled: { opacity: 0.7 },
-  submitText: { ...type.label, color: colors.paper, fontSize: 15 },
+  submitText: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
 });

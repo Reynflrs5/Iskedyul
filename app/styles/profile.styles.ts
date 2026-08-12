@@ -4,40 +4,87 @@ import { colors, type, spacing, radius, shadows } from './welcome.styles';
 export { colors, type, spacing, radius, shadows };
 
 export const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper },
-  scrollContent: { paddingBottom: spacing.xxl },
+  container: {
+    flex: 1,
+    backgroundColor: colors.ink, // hero sits flush at the top, no seam
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
 
-  // Avatar hero section
-  heroSection: { alignItems: 'center', marginBottom: spacing.xl, gap: spacing.sm },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: radius.pill,
+  // --- Hero panel ---
+  hero: {
     backgroundColor: colors.ink,
+    paddingBottom: 40,
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  heroAccentRing: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: colors.marigold,
+    opacity: 0.1,
+  },
+  heroSettingsButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 38,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.cta,
   },
-  avatarText: { ...type.h1, color: colors.paper, fontSize: 32 },
-  userName: { ...type.h2, color: colors.ink },
-  userEmail: { ...type.body, fontSize: 14, color: colors.inkSoft },
+  avatar: {
+    width: 84,
+    height: 84,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  avatarText: { ...type.h1, color: colors.paper, fontSize: 30 },
+  userName: { ...type.h2, color: colors.paper },
+  userEmail: { ...type.body, fontSize: 13, color: 'rgba(251,247,239,0.6)', marginTop: 2 },
 
-  // Stats strip
+  // --- Hero stats row (translucent chips) ---
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: colors.paperRaised,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.lg,
-    ...shadows.soft,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    width: '100%',
   },
-  statItem: { flex: 1, alignItems: 'center', paddingVertical: spacing.md },
-  statDivider: { width: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
-  statNumber: { ...type.h2, color: colors.ink },
-  statLabel: { ...type.caption, color: colors.inkSoft, marginTop: 2 },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: radius.md,
+  },
+  statNumber: { ...type.h2, color: colors.paper, fontSize: 19 },
+  statLabel: { ...type.caption, color: 'rgba(251,247,239,0.6)', marginTop: 2 },
 
-  // Section group
+  // --- Content sheet ---
+  contentSheet: {
+    flex: 1,
+    backgroundColor: colors.paper,
+    borderTopLeftRadius: radius.lg + 6,
+    borderTopRightRadius: radius.lg + 6,
+    marginTop: -24,
+    paddingTop: spacing.lg,
+    ...shadows.cta,
+    shadowOpacity: 0.12,
+  },
+
+  // --- Section group ---
   sectionGroup: {
     backgroundColor: colors.paperRaised,
     borderRadius: radius.md,
@@ -74,7 +121,7 @@ export const styles = StyleSheet.create({
   menuLabel: { ...type.label, fontSize: 15, color: colors.ink, flex: 1 },
   menuValue: { ...type.body, fontSize: 13, color: colors.inkSoft },
 
-  // Sign out button
+  // --- Sign out button ---
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',

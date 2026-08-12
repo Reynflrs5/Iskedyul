@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, Animated, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
@@ -6,34 +6,49 @@ import { colors, type, radius, shadows, spacing } from '../app/styles/welcome.st
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ActionMenuSheet from './ActionMenuSheet';
 
+const NAV_BAR_HEIGHT = 58; // fixed, explicit — not read back off a StyleSheet object
+
 type NavItem = {
   key: string;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   activeIcon: keyof typeof Ionicons.glyphMap;
   route: string;
+  tint: string; // each destination gets its own accent for the active pill
+  tintSoft: string;
 };
 
-// Route match is prefix-based ('/(tabs)/schedule' also matches
-// '/(tabs)/schedule/123'), so a detail screen still highlights its tab.
+// Route match is prefix-based ('/pages/schedule' also matches
+// '/pages/schedule/123'), so a detail screen still highlights its tab.
 const NAV_ITEMS: NavItem[] = [
-  { key: 'home', label: 'Home', icon: 'home-outline', activeIcon: 'home', route: '/pages/dashboard' },
-  { key: 'schedule', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar', route: '/pages/schedule' },
-  { key: 'decks', label: 'Decks', icon: 'layers-outline', activeIcon: 'layers', route: '/pages/decks' },
-  { key: 'profile', label: 'Profile', icon: 'person-outline', activeIcon: 'person', route: '/pages/profile' },
+  { key: 'home', label: 'Home', icon: 'home-outline', activeIcon: 'home', route: '/pages/dashboard', tint: colors.ink, tintSoft: colors.border },
+  { key: 'schedule', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar', route: '/pages/schedule', tint: colors.periwinkle, tintSoft: colors.periwinkleSoft },
+  { key: 'decks', label: 'Decks', icon: 'layers-outline', activeIcon: 'layers', route: '/pages/decks', tint: colors.sage, tintSoft: colors.sageSoft },
+  { key: 'profile', label: 'Profile', icon: 'person-outline', activeIcon: 'person', route: '/pages/profile', tint: colors.ink, tintSoft: colors.border },
 ];
 
-// One nav item — its own press-scale animation and active-state color, so
-// each icon+label pair behaves independently.
+// One nav item — its own press-scale animation, plus a soft "pill" that
+// fades and scales in behind the icon when this tab becomes active, instead
+// of relying on color change alone to signal state.
 function NavButton({ item, isActive }: { item: NavItem; isActive: boolean }) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const indicatorAnim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(indicatorAnim, {
+      toValue: isActive ? 1 : 0,
+      useNativeDriver: true,
+      speed: 18,
+      bounciness: 6,
+    }).start();
+  }, [isActive]);
 
   const pressIn = () =>
-    Animated.spring(scale, { toValue: 0.88, useNativeDriver: true, speed: 50 }).start();
+    Animated.spring(pressScale, { toValue: 0.88, useNativeDriver: true, speed: 50 }).start();
   const pressOut = () =>
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
+    Animated.spring(pressScale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
 
-  const tint = isActive ? colors.ink : colors.inkFaint;
+  const tint = isActive ? item.tint : colors.inkFaint;
 
   return (
     <Pressable
@@ -43,8 +58,20 @@ function NavButton({ item, isActive }: { item: NavItem; isActive: boolean }) {
       onPressOut={pressOut}
       hitSlop={6}
     >
-      <Animated.View style={{ alignItems: 'center', transform: [{ scale }] }}>
-        <Ionicons name={isActive ? item.activeIcon : item.icon} size={24} color={tint} />
+      <Animated.View style={{ alignItems: 'center', transform: [{ scale: pressScale }] }}>
+        <View style={styles.iconSlot}>
+          <Animated.View
+            style={[
+              styles.activePill,
+              {
+                backgroundColor: item.tintSoft,
+                opacity: indicatorAnim,
+                transform: [{ scale: indicatorAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+              },
+            ]}
+          />
+          <Ionicons name={isActive ? item.activeIcon : item.icon} size={22} color={tint} />
+        </View>
         <Text
           style={[styles.navLabel, { color: tint, fontWeight: isActive ? '700' : '500' }]}
           numberOfLines={1}
@@ -62,7 +89,7 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   const isRouteActive = (route: string) =>
-    route === '/(tabs)' ? pathname === '/(tabs)' || pathname === '/' : pathname.startsWith(route);
+    route === '/pages/dashboard' ? pathname === '/pages/dashboard' || pathname === '/' : pathname.startsWith(route);
 
   const fabScale = useRef(new Animated.Value(1)).current;
   const fabPressIn = () =>
@@ -76,16 +103,23 @@ export default function BottomNav() {
   const rightItems = NAV_ITEMS.slice(2);
 
   return (
-    // Outer wrapper fills the entire bottom of the screen with the nav color,
-    // so the iOS home-indicator zone never shows white underneath.
-    <View style={[styles.safeAreaFill, { height: styles.container.paddingTop + 54 + insets.bottom }]}>
-      <View style={styles.container}>
+    <>
+      {/* Single wrapper — fills all the way to the physical bottom edge so
+          the iOS home-indicator zone is never left showing raw background. */}
+      <View
+        style={[
+          styles.container,
+          { paddingBottom: insets.bottom, height: NAV_BAR_HEIGHT + 10 + insets.bottom },
+        ]}
+      >
         <View style={styles.navBar}>
           {leftItems.map((item) => (
             <NavButton key={item.key} item={item} isActive={isRouteActive(item.route)} />
           ))}
 
           <Animated.View style={{ transform: [{ scale: fabScale }] }}>
+            {/* Soft glow ring behind the FAB — static, just for depth */}
+            <View style={styles.fabGlow} pointerEvents="none" />
             <Pressable
               style={styles.fab}
               onPress={() => setShowMenu(true)}
@@ -103,18 +137,12 @@ export default function BottomNav() {
         </View>
       </View>
       <ActionMenuSheet visible={showMenu} onClose={() => setShowMenu(false)} />
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.paperRaised,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 10,
-  },
-  safeAreaFill: {
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -122,7 +150,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paperRaised,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    shadowColor: '#000',
+    paddingTop: 10,
+    shadowColor: colors.shadowInk,
     shadowOffset: { width: 0, height: -4 },
     shadowRadius: 16,
     shadowOpacity: 0.06,
@@ -140,10 +169,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: spacing.xs,
   },
+  iconSlot: {
+    width: 40,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activePill: {
+    position: 'absolute',
+    width: 40,
+    height: 32,
+    borderRadius: radius.md,
+  },
   navLabel: {
     ...type.caption,
     fontSize: 11,
-    marginTop: 3,
+    marginTop: 2,
   },
   fab: {
     width: 52,
@@ -155,5 +196,16 @@ const styles = StyleSheet.create({
     marginTop: -28, // pops out of the top of the bar slightly
     borderWidth: 4,
     borderColor: colors.paperRaised,
+    ...shadows.cta,
+  },
+  fabGlow: {
+    position: 'absolute',
+    top: -32,
+    left: -4,
+    width: 60,
+    height: 60,
+    borderRadius: radius.pill,
+    backgroundColor: colors.marigold,
+    opacity: 0.18,
   },
 });
