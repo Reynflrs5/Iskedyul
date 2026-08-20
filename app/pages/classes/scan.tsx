@@ -44,6 +44,7 @@ type ExtractedClass = {
   time: string;
   time_end: string;
   day: number | null;
+  professor: string;
   selected: boolean;
 };
 
@@ -172,7 +173,8 @@ Each object MUST have:
   "location": "string",
   "time": "string",
   "time_end": "string",
-  "day": number | null
+  "day": number | null,
+  "professor": "string"
 }
 
 Rules:
@@ -187,6 +189,7 @@ Rules:
 - If the day cannot be determined, use null.
 - time should use 12-hour format when possible.
 - location should be an empty string if no room/location is visible.
+- professor should be an empty string if no professor/instructor name is visible.
 - Ignore entries that do not contain at least a subject and a start time.
 - Do not invent information.
 - Return ONLY the JSON array.
@@ -269,6 +272,7 @@ Rules:
           time: c.time ?? '',
           time_end: c.time_end ?? '',
           day: c.day ?? null,
+          professor: c.professor ?? '',
           selected: true,
         }))
       );
@@ -310,6 +314,7 @@ Rules:
         time: c.time,
         time_end: c.time_end,
         day: c.day,
+        professor: c.professor,
         user_id: user?.id,
       }))
     );
@@ -387,6 +392,7 @@ Rules:
                     {c.time}{c.time_end ? ` – ${c.time_end}` : ''}
                   </Text>
                   {c.location ? <Text style={styles.reviewMetaText}>· {c.location}</Text> : null}
+                  {c.professor ? <Text style={styles.reviewMetaText}>· {c.professor}</Text> : null}
                 </View>
               </View>
             </Pressable>

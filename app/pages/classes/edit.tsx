@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SheetField from '../../../components/SheetField';
 import { colors, radius, spacing, type, shadows } from '../../styles/welcome.styles';
@@ -9,39 +9,56 @@ import { supabase } from '../../../utils/supabase';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export default function NewClassScreen() {
+export default function EditClassScreen() {
   const insets = useSafeAreaInsets();
-  const [subject, setSubject] = useState('');
-  const [location, setLocation] = useState('');
-  const [professor, setProfessor] = useState('');
-  const [time, setTime] = useState('');
-  const [timeEnd, setTimeEnd] = useState('');
-  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const params = useLocalSearchParams();
+  
+  const [subject, setSubject] = useState(params.subject as string || '');
+  const [location, setLocation] = useState(params.location as string || '');
+  const [professor, setProfessor] = useState(params.professor as string || '');
+  const [time, setTime] = useState(params.time as string || '');
+  const [timeEnd, setTimeEnd] = useState(params.time_end as string || '');
+  const [selectedDays, setSelectedDays] = useState<number[]>(
+    params.day !== undefined && params.day !== null && params.day !== ''
+      ? [Number(params.day)]
+      : []
+  );
   const [loading, setLoading] = useState(false);
 
-  const toggleDay = (i: number) =>
-    setSelectedDays((prev) => prev.includes(i) ? prev.filter((d) => d !== i) : [...prev, i]);
+  const toggleDay = (i: number) => {
+    // For editing an existing class, we only allow selecting one day at a time, 
+    // because each database row is a single class block with one 'day' value.
+    setSelectedDays(prev => prev.includes(i) ? [] : [i]);
+  };
 
-  const handleAdd = async () => {
+  const handleUpdate = async () => {
     if (!subject.trim() || !time.trim()) {
       Alert.alert('Missing Fields', 'Please enter at least a subject and start time.');
       return;
     }
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!params.id) {
+      Alert.alert('Error', 'Missing class ID to update.');
+      return;
+    }
 
-    const days = selectedDays.length > 0 ? selectedDays : [null];
-    const inserts = days.map((day) => ({
+    setLoading(true);
+    const day = selectedDays.length > 0 ? selectedDays[0] : null;
+    
+    const updates = {
       subject: subject.trim(),
       location: location.trim() || 'TBA',
       professor: professor.trim() || '',
       time: time.trim(),
       time_end: timeEnd.trim() || '',
       day,
-      user_id: user?.id,
-    }));
+    };
 
-    const { error } = await supabase.from('classes').insert(inserts);
+    const { error } = await supabase
+      .from('classes')
+      .update(updates)
+      .eq('id', params.id);
+      
     setLoading(false);
 
     if (error) {
@@ -57,7 +74,7 @@ export default function NewClassScreen() {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={colors.ink} />
         </Pressable>
-        <Text style={styles.headerTitle}>Manual Entry</Text>
+        <Text style={styles.headerTitle}>Edit Class</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -89,8 +106,8 @@ export default function NewClassScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-        <Pressable style={[styles.submitBtn, loading && { opacity: 0.7 }]} onPress={handleAdd} disabled={loading}>
-          <Text style={styles.submitText}>{loading ? 'Adding...' : 'Add Class'}</Text>
+        <Pressable style={[styles.submitBtn, loading && { opacity: 0.7 }]} onPress={handleUpdate} disabled={loading}>
+          <Text style={styles.submitText}>{loading ? 'Saving...' : 'Save Changes'}</Text>
         </Pressable>
       </View>
     </View>

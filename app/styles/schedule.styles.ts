@@ -255,26 +255,124 @@ export const styles = StyleSheet.create({
     left: 8,
     right: 8,
     borderRadius: radius.sm,
-    padding: 8,
+    padding: 10,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.1)',
+    gap: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   classBlockSubject: {
     ...type.label,
-    fontSize: 13,
+    fontSize: 17,
+    fontWeight: '800',
     color: '#132A4C',
+    textAlign: 'center',
   },
   classBlockLocation: {
     ...type.caption,
-    fontSize: 11,
-    color: 'rgba(19,42,76,0.7)',
-    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(19,42,76,0.85)',
+    textAlign: 'center',
   },
   classBlockTime: {
     ...type.caption,
-    fontSize: 10,
-    color: 'rgba(19,42,76,0.6)',
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(19,42,76,0.7)',
+    textAlign: 'center',
+  },
+  // --- Current Time Indicator ---
+  currentTimeLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: colors.marigold, // Using marigold for the accent color
+    zIndex: 10, // Ensure it's above the grid lines and class blocks
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currentTimeDot: {
+    position: 'absolute',
+    left: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.marigold,
+  },
+  
+  // --- Class Details Modal ---
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(19,42,76,0.6)',
+  },
+  modalContent: {
+    backgroundColor: colors.paper,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    ...shadows.cta,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  modalColorStrip: {
+    width: 6,
+    height: '100%',
+    borderRadius: 3,
+    marginRight: spacing.sm,
+  },
+  modalSubject: {
+    ...type.h2,
+    color: colors.ink,
+  },
+  modalTime: {
+    ...type.caption,
+    color: colors.inkSoft,
     marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: spacing.xs,
+    marginLeft: spacing.sm,
+  },
+  modalBody: {
+    backgroundColor: colors.paperRaised,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xl,
+  },
+  modalDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  modalDetailText: {
+    ...type.body,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  modalActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+  },
+  modalActionText: {
+    ...type.label,
   }
 });
