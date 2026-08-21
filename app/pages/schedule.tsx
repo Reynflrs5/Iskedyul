@@ -59,6 +59,8 @@ export default function ScheduleScreen() {
   const todayIndex = useMemo(() => (new Date().getDay() + 6) % 7, []);
   const [selectedDay, setSelectedDay] = useState(todayIndex);
   const [classes, setClasses] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [decks, setDecks] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   
   // Modal state
@@ -76,6 +78,12 @@ export default function ScheduleScreen() {
   const refreshClasses = async () => {
     const { data } = await supabase.from('classes').select('*').order('time', { ascending: true });
     if (data) setClasses(data);
+
+    const { data: tasksData } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+    if (tasksData) setTasks(tasksData);
+
+    const { data: decksData } = await supabase.from('decks').select('*').order('created_at', { ascending: false });
+    if (decksData) setDecks(decksData);
   };
 
   // Re-fetch and re-play the entrance animation every time this tab regains
@@ -506,8 +514,55 @@ export default function ScheduleScreen() {
                     </Text>
                   </View>
                 </View>
+
+                {/* TASKS SECTION */}
+                {(() => {
+                  const subjectTasks = tasks.filter(t => !t.done && t.title.toLowerCase().includes(selectedClassDetails.subject.toLowerCase()));
+                  if (subjectTasks.length > 0) {
+                    return (
+                      <View style={{ marginTop: spacing.md, paddingHorizontal: spacing.sm }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, marginBottom: spacing.sm }}>Upcoming Tasks</Text>
+                        {subjectTasks.slice(0, 3).map(t => (
+                          <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, backgroundColor: colors.paper, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+                            <Ionicons name="ellipse" size={10} color={t.priority === 'high' ? colors.marigold : t.priority === 'medium' ? colors.periwinkle : colors.sage} />
+                            <Text style={{ fontSize: 14, color: colors.ink, flex: 1 }} numberOfLines={1}>{t.title}</Text>
+                            <Text style={{ fontSize: 12, color: colors.inkFaint }}>{t.due}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* DECKS SECTION */}
+                {(() => {
+                  const subjectDecks = decks.filter(d => d.title.toLowerCase().includes(selectedClassDetails.subject.toLowerCase()));
+                  if (subjectDecks.length > 0) {
+                    return (
+                      <View style={{ marginTop: spacing.md, paddingHorizontal: spacing.sm }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, marginBottom: spacing.sm }}>Related Decks</Text>
+                        {subjectDecks.slice(0, 2).map(d => (
+                          <Pressable 
+                            key={d.id} 
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, backgroundColor: colors.paper, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                            onPress={() => {
+                              setSelectedClassDetails(null);
+                              router.push(`/pages/decks/${d.id}` as any);
+                            }}
+                          >
+                            <Ionicons name="layers" size={16} color={colors.marigold} />
+                            <Text style={{ fontSize: 14, color: colors.ink, flex: 1 }} numberOfLines={1}>{d.title}</Text>
+                            <Text style={{ fontSize: 12, color: colors.inkFaint }}>{d.total} terms</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
                 
-                {/* Note for User: Can add task lists or deck links here in the future! */}
+                {/* Action Buttons */}
                 <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
                   <Pressable
                     style={[styles.modalActionBtn, { flex: 1, backgroundColor: colors.periwinkle }]}

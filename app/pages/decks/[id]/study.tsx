@@ -42,7 +42,7 @@ function PressScale({
     !disabled && Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
 
   return (
-    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+    <Animated.View style={[{ transform: [{ scale }], minHeight: 48 }, style]}>
       <Pressable
         onPress={onPress}
         onPressIn={pressIn}
@@ -197,8 +197,10 @@ function FlashCard({
 }
 
 export default function StudyScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, shuffle: shuffleParam, starredOnly: starredParam } = useLocalSearchParams<{ id: string; shuffle?: string; starredOnly?: string }>();
   const insets = useSafeAreaInsets();
+  const shouldShuffle = shuffleParam !== '0';
+  const starredOnly = starredParam === '1';
 
   const [queue, setQueue] = useState<any[]>([]);
   const [reviewedCount, setReviewedCount] = useState(0);
@@ -255,9 +257,11 @@ export default function StudyScreen() {
 
     const { data } = await supabase.from('cards').select('*').eq('deck_id', id).order('created_at');
     if (data && data.length > 0) {
-      const shuffled = [...data].sort(() => Math.random() - 0.5);
-      setQueue(shuffled);
-      setTotalCount(shuffled.length);
+      let cardPool = starredOnly ? data.filter(c => c.starred) : data;
+      if (cardPool.length === 0) cardPool = data; // fallback if no starred
+      const ordered = shouldShuffle ? [...cardPool].sort(() => Math.random() - 0.5) : cardPool;
+      setQueue(ordered);
+      setTotalCount(ordered.length);
       setReviewedCount(0);
       setGotItCount(0);
       setFinished(false);
@@ -274,7 +278,7 @@ export default function StudyScreen() {
     setQueue(newQueue);
     if (newQueue.length === 0) {
       setFinished(true);
-      await supabase.from('decks').update({ reviewed: newGotIt }).eq('id', id);
+      await supabase.from('decks').update({ reviewed: newGotIt, last_studied: new Date().toISOString() }).eq('id', id);
     }
   };
 
@@ -703,7 +707,8 @@ const styles = StyleSheet.create({
 
   doneActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, width: '100%' },
   doneBtn: {
-    flex: 1, borderRadius: radius.md, paddingVertical: 13,
+    flex: 1, borderRadius: radius.md, height: 52,
+    alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5, ...shadows.soft,
   },
   doneBtnText: { ...type.label, fontSize: 14 },

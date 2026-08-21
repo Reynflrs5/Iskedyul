@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -59,6 +59,20 @@ export default function NewDeckScreen() {
   const [selectedColor, setSelectedColor] = useState('marigold');
   const [loading, setLoading] = useState(false);
   const [titleError, setTitleError] = useState(false);
+  
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
+
+  useEffect(() => {
+    async function fetchSubjects() {
+      const { data } = await supabase.from('classes').select('subject');
+      if (data) {
+        const unique = Array.from(new Set(data.map(c => c.subject).filter(Boolean)));
+        setSubjects(unique);
+      }
+    }
+    fetchSubjects();
+  }, []);
 
   const contentAnim = useRef(new Animated.Value(0)).current;
   const titleShake = useRef(new Animated.Value(0)).current;
@@ -95,9 +109,15 @@ export default function NewDeckScreen() {
     }
     setTitleError(false);
     setLoading(true);
+
+    let finalTitle = title.trim();
+    if (selectedSubject) {
+      finalTitle = `[${selectedSubject}] ${finalTitle}`;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('decks').insert({
-      title: title.trim(),
+      title: finalTitle,
       color: selectedColor,
       total: 0,
       reviewed: 0,
@@ -147,6 +167,25 @@ export default function NewDeckScreen() {
             <Ionicons name="alert-circle" size={12} color={colors.error} />
             <Text style={styles.errorText}>Give your deck a name first</Text>
           </View>
+        )}
+
+        {subjects.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>SUBJECT (OPTIONAL)</Text>
+            <View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingBottom: spacing.sm }}>
+                {subjects.map(sub => (
+                  <Pressable
+                    key={sub}
+                    style={[styles.subjectChip, selectedSubject === sub && styles.subjectChipSelected]}
+                    onPress={() => setSelectedSubject(selectedSubject === sub ? '' : sub)}
+                  >
+                    <Text style={[styles.subjectText, selectedSubject === sub && styles.subjectTextSelected]}>{sub}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          </>
         )}
 
         <Text style={styles.sectionLabel}>COLOR TAG</Text>
@@ -216,6 +255,16 @@ const styles = StyleSheet.create({
   preview: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, marginBottom: spacing.lg },
   previewIcon: { width: 34, height: 34, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   previewTitle: { ...type.label, fontSize: 15, flex: 1 },
-  submitBtn: { borderRadius: radius.md, paddingVertical: 14, ...shadows.soft },
+  submitBtn: { borderRadius: radius.md, height: 52, alignItems: 'center', justifyContent: 'center', ...shadows.soft },
   submitText: { ...type.label, color: colors.paper, fontSize: 15 },
+  
+  subjectChip: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill,
+    backgroundColor: colors.paperRaised, borderWidth: 1, borderColor: colors.border,
+  },
+  subjectChipSelected: {
+    backgroundColor: colors.periwinkle, borderColor: colors.periwinkle,
+  },
+  subjectText: { ...type.caption, color: colors.inkSoft, fontWeight: '600' },
+  subjectTextSelected: { color: colors.paper },
 });

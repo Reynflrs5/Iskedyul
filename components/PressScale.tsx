@@ -31,7 +31,7 @@ export default function PressScale({
         !disabled && Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
 
     return (
-        <Animated.View style={[{ transform: [{ scale }] }, style]}>
+        <Animated.View style={[{ transform: [{ scale }], minHeight: 48 }, style]}>
             <Pressable
                 onPress={onPress}
                 onPressIn={pressIn}

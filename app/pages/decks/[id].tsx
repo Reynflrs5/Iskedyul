@@ -1,6 +1,6 @@
 /**
- * Deck Detail Screen — shows all cards in the deck, lets you add cards
- * and launch Study Mode.
+ * Deck Detail Screen — shows all cards in the deck, lets you add/edit/star cards
+ * and launch Study Mode (with shuffle & starred-only options).
  */
 import React, { useCallback, useRef, useState } from 'react';
 import {
@@ -13,9 +13,6 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { supabase } from '../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../styles/welcome.styles';
 
-// A press-scale wrapper shared by every button on this screen — the Study
-// screen has an identical component; worth lifting both into
-// components/PressScale.tsx once you touch a third screen that needs it.
 function PressScale({
   onPress,
   disabled,
@@ -34,7 +31,7 @@ function PressScale({
     !disabled && Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }).start();
 
   return (
-    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+    <Animated.View style={[{ transform: [{ scale }], minHeight: 48 }, style]}>
       <Pressable
         onPress={onPress}
         onPressIn={pressIn}
@@ -48,12 +45,26 @@ function PressScale({
   );
 }
 
+function getTimeAgo(dateStr: string | null) {
+  if (!dateStr) return null;
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function DeckDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
 
   const [deck, setDeck] = useState<any>(null);
   const [cards, setCards] = useState<any[]>([]);
+  const [showStarredOnly, setShowStarredOnly] = useState(false);
+  const [shuffle, setShuffle] = useState(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -98,6 +109,12 @@ export default function DeckDetailScreen() {
     ]);
   };
 
+  const toggleStar = async (cardId: string, currentStarred: boolean) => {
+    // Optimistic update
+    setCards((prev) => prev.map((c) => c.id === cardId ? { ...c, starred: !currentStarred } : c));
+    await supabase.from('cards').update({ starred: !currentStarred }).eq('id', cardId);
+  };
+
   const deckColor = deck?.color === 'sage' ? colors.sage
     : deck?.color === 'periwinkle' ? colors.periwinkle
       : deck?.color === 'purple' ? '#A855F7'
@@ -105,8 +122,49 @@ export default function DeckDetailScreen() {
           : deck?.color === 'blue' ? '#3B82F6'
             : colors.marigold;
 
-  const goToStudy = () => cards.length > 0 && router.push(`/pages/decks/${id}/study` as any);
+  const exportDeck = () => {
+    if (cards.length === 0) return;
+    const exportData = {
+      title: deck.title,
+      cards: cards.map(c => ({ term: c.term, definition: c.definition }))
+    };
+    Alert.alert('Export Deck', JSON.stringify(exportData, null, 2));
+  };
+
+  const starredCount = cards.filter(c => c.starred).length;
+  const displayCards = showStarredOnly ? cards.filter(c => c.starred) : cards;
+
+  const goToStudy = () => {
+    if (cards.length === 0) return;
+    const studyCards = showStarredOnly ? cards.filter(c => c.starred) : cards;
+    if (studyCards.length === 0) {
+      Alert.alert('No Cards', 'No starred cards to study. Star some cards first!');
+      return;
+    }
+    router.push({
+      pathname: `/pages/decks/${id}/study` as any,
+      params: {
+        shuffle: shuffle ? '1' : '0',
+        starredOnly: showStarredOnly ? '1' : '0',
+      },
+    });
+  };
+
   const goToAddCard = () => router.push(`/pages/decks/${id}/add-card` as any);
+  
+  const goToEditCard = (card: any) => {
+    router.push({
+      pathname: `/pages/decks/${id}/edit-card` as any,
+      params: {
+        cardId: card.id,
+        cardTerm: card.term,
+        cardDefinition: card.definition,
+      },
+    });
+  };
+
+  const lastStudied = getTimeAgo(deck?.last_studied);
+  const mastery = deck?.total > 0 ? Math.round(((deck?.reviewed || 0) / deck.total) * 100) : 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -151,7 +209,65 @@ export default function DeckDetailScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        {cards.length === 0 ? (
+        {/* Study Stats Bar (Feature #3) */}
+        {cards.length > 0 && (
+          <View style={styles.statsBar}>
+            <View style={styles.statItem}>
+              <Ionicons name="time-outline" size={14} color={colors.inkSoft} />
+              <Text style={styles.statText}>{lastStudied || 'Not yet studied'}</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Ionicons name="trending-up-outline" size={14} color={colors.sage} />
+              <Text style={styles.statText}>{mastery}% mastery</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Ionicons name="star" size={14} color={colors.marigold} />
+              <Text style={styles.statText}>{starredCount} starred</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Study Options (Feature #1 & #2) */}
+        {cards.length > 0 && (
+          <View style={styles.optionsRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }}>
+              <Pressable
+                style={[styles.optionChip, shuffle && styles.optionChipActive]}
+                onPress={() => setShuffle(!shuffle)}
+              >
+                <Ionicons name="shuffle" size={16} color={shuffle ? colors.paper : colors.inkSoft} />
+                <Text style={[styles.optionText, shuffle && styles.optionTextActive]}>Shuffle</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.optionChip, showStarredOnly && { backgroundColor: colors.marigold, borderColor: colors.marigold }]}
+                onPress={() => setShowStarredOnly(!showStarredOnly)}
+              >
+                <Ionicons name={showStarredOnly ? 'star' : 'star-outline'} size={16} color={showStarredOnly ? colors.paper : colors.inkSoft} />
+                <Text style={[styles.optionText, showStarredOnly && styles.optionTextActive]}>
+                  Starred Only{starredCount > 0 ? ` (${starredCount})` : ''}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.optionChip}
+                onPress={() => router.push(`/pages/decks/${id}/generate` as any)}
+              >
+                <Ionicons name="sparkles" size={16} color={colors.inkSoft} />
+                <Text style={styles.optionText}>AI Gen</Text>
+              </Pressable>
+              <Pressable
+                style={styles.optionChip}
+                onPress={exportDeck}
+              >
+                <Ionicons name="share-outline" size={16} color={colors.inkSoft} />
+                <Text style={styles.optionText}>Export</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
+
+        {displayCards.length === 0 && !showStarredOnly ? (
           <View style={styles.emptyBox}>
             <View style={[styles.emptyIconWrap, { backgroundColor: deckColor + '18' }]}>
               <Ionicons name="card-outline" size={32} color={deckColor} />
@@ -165,12 +281,26 @@ export default function DeckDetailScreen() {
               <Ionicons name="add" size={18} color={colors.paper} />
               <Text style={styles.emptyAddBtnText}>Add First Card</Text>
             </PressScale>
+            <PressScale
+              style={[styles.emptyAddBtn, { backgroundColor: colors.paperRaised, borderWidth: 1, borderColor: colors.border, marginTop: spacing.sm }]}
+              onPress={() => router.push(`/pages/decks/${id}/generate` as any)}
+            >
+              <Ionicons name="sparkles" size={18} color={deckColor} />
+              <Text style={[styles.emptyAddBtnText, { color: colors.ink }]}>Generate with AI</Text>
+            </PressScale>
+          </View>
+        ) : displayCards.length === 0 && showStarredOnly ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="star-outline" size={36} color={colors.inkFaint} />
+            <Text style={styles.emptyTitle}>No starred cards</Text>
+            <Text style={styles.emptyBody}>Star cards you find difficult to filter them here.</Text>
           </View>
         ) : (
-          cards.map((card, i) => (
+          displayCards.map((card, i) => (
             <Pressable
               key={card.id}
               style={styles.cardRow}
+              onPress={() => goToEditCard(card)}
               onLongPress={() => confirmDeleteCard(card.id, card.term)}
               delayLongPress={400}
             >
@@ -182,7 +312,18 @@ export default function DeckDetailScreen() {
                 <Text style={styles.cardTerm}>{card.term}</Text>
                 <Text style={styles.cardDef} numberOfLines={2}>{card.definition}</Text>
               </View>
-              <Ionicons name="ellipsis-vertical" size={16} color={colors.inkFaint} />
+              {/* Star button (Feature #2) */}
+              <Pressable
+                onPress={() => toggleStar(card.id, !!card.starred)}
+                hitSlop={8}
+                style={{ padding: 4 }}
+              >
+                <Ionicons
+                  name={card.starred ? 'star' : 'star-outline'}
+                  size={20}
+                  color={card.starred ? colors.marigold : colors.inkFaint}
+                />
+              </Pressable>
             </Pressable>
           ))
         )}
@@ -218,10 +359,57 @@ const styles = StyleSheet.create({
   studyBtn: {
     paddingHorizontal: 14, paddingVertical: 9,
     borderRadius: radius.pill, ...shadows.soft,
+    minHeight: 36,
   },
   studyBtnText: { ...type.label, color: colors.paper, fontSize: 13 },
 
   content: { padding: spacing.lg, gap: spacing.sm },
+
+  // Study Stats (Feature #3)
+  statsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.paperRaised,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  statItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  statText: { ...type.caption, color: colors.inkSoft, fontSize: 11 },
+  statDivider: { width: 1, height: 20, backgroundColor: colors.border },
+
+  // Study options (Feature #1 & #2 toggles)
+  optionsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  optionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.paperRaised,
+  },
+  optionChipActive: {
+    backgroundColor: colors.periwinkle,
+    borderColor: colors.periwinkle,
+  },
+  optionText: { ...type.caption, color: colors.inkSoft, fontWeight: '600', fontSize: 12 },
+  optionTextActive: { color: colors.paper },
 
   emptyBox: {
     alignItems: 'center', paddingVertical: spacing.xxl,
@@ -237,7 +425,7 @@ const styles = StyleSheet.create({
   emptyAddBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: spacing.lg, paddingVertical: 12,
-    borderRadius: radius.pill, ...shadows.soft,
+    borderRadius: radius.pill, ...shadows.soft, minHeight: 48,
   },
   emptyAddBtnText: { ...type.label, color: colors.paper, fontSize: 14 },
 
@@ -265,7 +453,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: colors.border,
   },
   addCardBtn: {
-    borderRadius: radius.md, paddingVertical: 14, ...shadows.soft,
+    borderRadius: radius.md, paddingVertical: 14, ...shadows.soft, minHeight: 48,
   },
   addCardText: { ...type.label, color: colors.paper, fontSize: 15 },
 });

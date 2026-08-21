@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SheetField from '../../../components/SheetField';
@@ -18,6 +19,35 @@ export default function NewClassScreen() {
   const [timeEnd, setTimeEnd] = useState('');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [startTimeDate, setStartTimeDate] = useState(() => {
+    const d = new Date();
+    d.setHours(9, 0, 0, 0);
+    return d;
+  });
+  const [endTimeDate, setEndTimeDate] = useState(() => {
+    const d = new Date();
+    d.setHours(10, 30, 0, 0);
+    return d;
+  });
+
+  const handleStartTimeChange = (event: any, selectedDate?: Date) => {
+    setShowStartTimePicker(false);
+    if (selectedDate) {
+      setStartTimeDate(selectedDate);
+      setTime(selectedDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }));
+    }
+  };
+
+  const handleEndTimeChange = (event: any, selectedDate?: Date) => {
+    setShowEndTimePicker(false);
+    if (selectedDate) {
+      setEndTimeDate(selectedDate);
+      setTimeEnd(selectedDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }));
+    }
+  };
 
   const toggleDay = (i: number) =>
     setSelectedDays((prev) => prev.includes(i) ? prev.filter((d) => d !== i) : [...prev, i]);
@@ -68,12 +98,27 @@ export default function NewClassScreen() {
 
         <View style={styles.timeRow}>
           <View style={{ flex: 1 }}>
-            <SheetField label="START TIME" placeholder="e.g. 9:00 AM" value={time} onChangeText={setTime} />
+            <Pressable onPress={() => setShowStartTimePicker(true)}>
+              <View pointerEvents="none">
+                <SheetField label="START TIME" placeholder="Select Time" value={time} />
+              </View>
+            </Pressable>
           </View>
           <View style={{ flex: 1 }}>
-            <SheetField label="END TIME" placeholder="e.g. 10:30 AM" value={timeEnd} onChangeText={setTimeEnd} />
+            <Pressable onPress={() => setShowEndTimePicker(true)}>
+              <View pointerEvents="none">
+                <SheetField label="END TIME" placeholder="Select Time" value={timeEnd} />
+              </View>
+            </Pressable>
           </View>
         </View>
+        
+        {showStartTimePicker && (
+          <DateTimePicker value={startTimeDate} mode="time" display="default" onChange={handleStartTimeChange} />
+        )}
+        {showEndTimePicker && (
+          <DateTimePicker value={endTimeDate} mode="time" display="default" onChange={handleEndTimeChange} />
+        )}
 
         <Text style={styles.sectionLabel}>DAYS</Text>
         <View style={styles.daysRow}>

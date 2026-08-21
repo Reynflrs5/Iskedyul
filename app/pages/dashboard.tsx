@@ -362,7 +362,7 @@ export default function DashboardScreen() {
                         <FadeInSection anim={tasksAnim}>
                             <View style={[styles.sectionRow, { marginTop: 8 }]}>
                                 <Text style={styles.sectionTitle}>Upcoming Tasks</Text>
-                                <Pressable onPress={() => router.push('/pages/decks' as any)}>
+                                <Pressable onPress={() => router.push('/pages/tasks' as any)}>
                                     <Text style={styles.sectionLink}>See all</Text>
                                 </Pressable>
                             </View>

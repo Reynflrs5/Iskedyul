@@ -105,9 +105,14 @@ export default function DecksScreen() {
                     : 'Start learning with flashcards'}
                 </Text>
               </View>
-              <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/new')}>
-                <Ionicons name="add" size={20} color={colors.marigoldInk} />
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/import' as any)}>
+                  <Ionicons name="download-outline" size={20} color={colors.marigoldInk} />
+                </Pressable>
+                <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/new')}>
+                  <Ionicons name="add" size={20} color={colors.marigoldInk} />
+                </Pressable>
+              </View>
             </View>
 
             {decks.length > 0 && (
@@ -175,6 +180,20 @@ export default function DecksScreen() {
 
                       <View style={styles.deckMetaRow}>
                         <Text style={styles.deckTermCount}>{deck.total} terms</Text>
+                        {deck.last_studied && (
+                          <Text style={[styles.deckTermCount, { marginLeft: 8 }]}>
+                            • {(() => {
+                              const diff = Date.now() - new Date(deck.last_studied).getTime();
+                              const mins = Math.floor(diff / 60000);
+                              if (mins < 1) return 'Just now';
+                              if (mins < 60) return `${mins}m ago`;
+                              const hours = Math.floor(mins / 60);
+                              if (hours < 24) return `${hours}h ago`;
+                              const days = Math.floor(hours / 24);
+                              return `${days}d ago`;
+                            })()}
+                          </Text>
+                        )}
                       </View>
 
                       <View style={styles.progressBarBg}>

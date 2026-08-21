@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
@@ -54,6 +54,21 @@ export default function NewTaskScreen() {
   const [titleError, setTitleError] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [date, setDate] = useState(new Date());
+  
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
+
+  useEffect(() => {
+    async function fetchSubjects() {
+      const { data } = await supabase.from('classes').select('subject');
+      if (data) {
+        // Extract unique subjects
+        const unique = Array.from(new Set(data.map(c => c.subject).filter(Boolean)));
+        setSubjects(unique);
+      }
+    }
+    fetchSubjects();
+  }, []);
 
   const titleShake = useRef(new Animated.Value(0)).current;
   const submitScale = useRef(new Animated.Value(1)).current;
@@ -86,8 +101,12 @@ export default function NewTaskScreen() {
     setLoading(true);
 
     const { data: { user } } = await supabase.auth.getUser();
+    
+    // Automatically prepend the subject as a category if selected
+    const finalTitle = selectedSubject ? `[${selectedSubject}] ${title.trim()}` : title.trim();
+
     const { error } = await supabase.from('tasks').insert({
-      title: title.trim(),
+      title: finalTitle,
       due: due.trim() || 'No due date',
       priority,
       done: false,
@@ -131,6 +150,25 @@ export default function NewTaskScreen() {
             </View>
           )}
         </Animated.View>
+
+        {subjects.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>SUBJECT (OPTIONAL)</Text>
+            <View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingBottom: spacing.sm }}>
+                {subjects.map(sub => (
+                  <Pressable
+                    key={sub}
+                    style={[styles.quickDueChip, selectedSubject === sub && styles.quickDueChipSelected]}
+                    onPress={() => setSelectedSubject(selectedSubject === sub ? '' : sub)}
+                  >
+                    <Text style={[styles.quickDueText, selectedSubject === sub && styles.quickDueTextSelected]}>{sub}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionLabel}>DUE DATE</Text>
         <View style={styles.quickDueRow}>

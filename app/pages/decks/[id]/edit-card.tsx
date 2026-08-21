@@ -1,5 +1,5 @@
 /**
- * Add Card Screen — add a term + definition to a deck.
+ * Edit Card Screen — edit an existing card's term + definition.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -13,9 +13,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../../styles/welcome.styles';
 
-// Shared press-scale wrapper — same pattern as the Deck Detail and Study
-// screens. Worth lifting into components/PressScale.tsx now that it's in
-// three files.
 function PressScale({
   onPress,
   disabled,
@@ -48,27 +45,27 @@ function PressScale({
   );
 }
 
-export default function AddCardScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+export default function EditCardScreen() {
+  const { id, cardId, cardTerm, cardDefinition } = useLocalSearchParams<{
+    id: string;
+    cardId: string;
+    cardTerm: string;
+    cardDefinition: string;
+  }>();
   const insets = useSafeAreaInsets();
 
-  const [deckTitle, setDeckTitle] = useState('');
   const [deckColor, setDeckColor] = useState(colors.marigold);
-
-  const [term, setTerm] = useState('');
-  const [definition, setDefinition] = useState('');
+  const [term, setTerm] = useState(cardTerm || '');
+  const [definition, setDefinition] = useState(cardDefinition || '');
   const [loading, setLoading] = useState(false);
-  const [savedCount, setSavedCount] = useState(0);
   const [termError, setTermError] = useState(false);
   const [defError, setDefError] = useState(false);
 
-  // --- Entrance + focus/feedback animation ---
   const contentAnim = useRef(new Animated.Value(0)).current;
-  const termFocusAnim = useRef(new Animated.Value(0)).current;
-  const defFocusAnim = useRef(new Animated.Value(0)).current;
   const termShake = useRef(new Animated.Value(0)).current;
   const defShake = useRef(new Animated.Value(0)).current;
-  const badgeScale = useRef(new Animated.Value(1)).current;
+  const termFocusAnim = useRef(new Animated.Value(0)).current;
+  const defFocusAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(contentAnim, {
@@ -76,9 +73,8 @@ export default function AddCardScreen() {
     }).start();
 
     async function loadDeckMeta() {
-      const { data } = await supabase.from('decks').select('title, color').eq('id', id).single();
+      const { data } = await supabase.from('decks').select('color').eq('id', id).single();
       if (data) {
-        setDeckTitle(data.title);
         const c = data.color === 'sage' ? colors.sage
           : data.color === 'periwinkle' ? colors.periwinkle
             : data.color === 'purple' ? '#A855F7'
@@ -101,15 +97,7 @@ export default function AddCardScreen() {
     ]).start();
   };
 
-  const pulseBadge = () => {
-    badgeScale.setValue(1);
-    Animated.sequence([
-      Animated.spring(badgeScale, { toValue: 1.18, useNativeDriver: true, speed: 60 }),
-      Animated.spring(badgeScale, { toValue: 1, useNativeDriver: true, friction: 4 }),
-    ]).start();
-  };
-
-  const handleSave = async (andClose = false) => {
+  const handleSave = async () => {
     const missingTerm = !term.trim();
     const missingDef = !definition.trim();
     if (missingTerm || missingDef) {
@@ -121,30 +109,22 @@ export default function AddCardScreen() {
     }
 
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from('cards').insert({
-      deck_id: id,
+    const { error } = await supabase.from('cards').update({
       term: term.trim(),
       definition: definition.trim(),
-      user_id: user?.id,
-    });
+    }).eq('id', cardId);
     setLoading(false);
 
     if (error) {
-      // Inline banner keeps this consistent with the rest of the app's
-      // forms instead of a native Alert popup.
       setTermError(true);
       shakeField(termShake);
     } else {
-      setSavedCount((n) => n + 1);
-      pulseBadge();
-      setTerm('');
-      setDefinition('');
-      setTermError(false);
-      setDefError(false);
-      if (andClose) router.back();
+      router.back();
     }
   };
+
+  const animateFocus = (anim: Animated.Value, toValue: number) =>
+    Animated.timing(anim, { toValue, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
 
   const termBorderColor = termFocusAnim.interpolate({
     inputRange: [0, 1],
@@ -154,9 +134,6 @@ export default function AddCardScreen() {
     inputRange: [0, 1],
     outputRange: [defError ? colors.error : colors.border, deckColor],
   });
-
-  const animateFocus = (anim: Animated.Value, toValue: number) =>
-    Animated.timing(anim, { toValue, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
 
   return (
     <KeyboardAvoidingView
@@ -178,15 +155,8 @@ export default function AddCardScreen() {
             <Ionicons name="arrow-back" size={22} color={colors.ink} />
           </Pressable>
           <View style={{ flex: 1, marginLeft: spacing.sm }}>
-            <Text style={styles.headerTitle}>Add Card</Text>
-            {!!deckTitle && <Text style={styles.headerSub} numberOfLines={1}>{deckTitle}</Text>}
+            <Text style={styles.headerTitle}>Edit Card</Text>
           </View>
-          {savedCount > 0 && (
-            <Animated.View style={[styles.badge, { backgroundColor: deckColor + '1F', transform: [{ scale: badgeScale }] }]}>
-              <Ionicons name="checkmark-circle" size={13} color={deckColor} />
-              <Text style={[styles.badgeText, { color: deckColor }]}>{savedCount} saved</Text>
-            </Animated.View>
-          )}
         </Animated.View>
 
         <ScrollView
@@ -245,25 +215,26 @@ export default function AddCardScreen() {
           </Animated.View>
         </ScrollView>
 
-        {/* Footer actions */}
+        {/* Footer */}
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
           <PressScale
-            style={[styles.addMoreBtn, loading && { opacity: 0.6 }]}
-            onPress={() => handleSave(false)}
-            disabled={loading}
+            style={[styles.cancelBtn]}
+            onPress={() => router.back()}
           >
-            <Ionicons name="add-circle-outline" size={18} color={colors.ink} />
-            <Text style={styles.addMoreText}>Save & Add Another</Text>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
           </PressScale>
           <PressScale
-            style={[styles.doneBtn, { backgroundColor: deckColor }, loading && { opacity: 0.6 }]}
-            onPress={() => handleSave(true)}
+            style={[styles.saveBtn, { backgroundColor: deckColor }, loading && { opacity: 0.6 }]}
+            onPress={handleSave}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator size="small" color={colors.paper} />
             ) : (
-              <Text style={styles.doneBtnText}>Save & Done</Text>
+              <>
+                <Ionicons name="checkmark-circle" size={18} color={colors.paper} />
+                <Text style={styles.saveBtnText}>Save Changes</Text>
+              </>
             )}
           </PressScale>
         </View>
@@ -285,19 +256,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paperRaised, borderWidth: 1, borderColor: colors.border,
   },
   headerTitle: { ...type.h2, color: colors.ink },
-  headerSub: { ...type.caption, color: colors.inkSoft, marginTop: 1 },
-  badge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    borderRadius: radius.pill,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  badgeText: { ...type.caption, fontWeight: '700' },
-
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   label: { ...type.overline, color: colors.inkSoft, marginBottom: spacing.xs },
-  termInputWrap: {
-    borderBottomWidth: 2,
-  },
+  termInputWrap: { borderBottomWidth: 2 },
   termInput: {
     ...type.h2, fontSize: 20, color: colors.ink,
     paddingVertical: spacing.sm, paddingHorizontal: 0,
@@ -315,23 +276,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   errorText: { ...type.caption, color: colors.error },
-
   footer: {
     flexDirection: 'row', gap: spacing.sm,
     paddingHorizontal: spacing.lg, paddingTop: spacing.md,
     borderTopWidth: 1, borderTopColor: colors.border,
   },
-  addMoreBtn: {
-    flex: 1, borderRadius: radius.md, height: 52,
-    alignItems: 'center', justifyContent: 'center',
+  cancelBtn: {
+    flex: 1, borderRadius: radius.md, paddingVertical: 13,
     borderWidth: 1.5, borderColor: colors.border,
     backgroundColor: colors.paperRaised,
   },
-  addMoreText: { ...type.label, color: colors.ink, fontSize: 14 },
-  doneBtn: {
-    flex: 1, borderRadius: radius.md, height: 52,
-    alignItems: 'center', justifyContent: 'center',
+  cancelBtnText: { ...type.label, color: colors.ink, fontSize: 14 },
+  saveBtn: {
+    flex: 1, borderRadius: radius.md, paddingVertical: 13,
     ...shadows.soft,
   },
-  doneBtnText: { ...type.label, color: colors.paper, fontSize: 14 },
+  saveBtnText: { ...type.label, color: colors.paper, fontSize: 14 },
 });
