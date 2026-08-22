@@ -64,6 +64,7 @@ export default function DeckDetailScreen() {
   const [deck, setDeck] = useState<any>(null);
   const [cards, setCards] = useState<any[]>([]);
   const [showStarredOnly, setShowStarredOnly] = useState(false);
+  const [showDueOnly, setShowDueOnly] = useState(false);
   const [shuffle, setShuffle] = useState(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -132,13 +133,16 @@ export default function DeckDetailScreen() {
   };
 
   const starredCount = cards.filter(c => c.starred).length;
-  const displayCards = showStarredOnly ? cards.filter(c => c.starred) : cards;
+  const dueCount = cards.filter(c => c.next_review_date && new Date(c.next_review_date) <= new Date()).length;
+
+  let displayCards = cards;
+  if (showStarredOnly) displayCards = displayCards.filter(c => c.starred);
+  if (showDueOnly) displayCards = displayCards.filter(c => c.next_review_date && new Date(c.next_review_date) <= new Date());
 
   const goToStudy = () => {
     if (cards.length === 0) return;
-    const studyCards = showStarredOnly ? cards.filter(c => c.starred) : cards;
-    if (studyCards.length === 0) {
-      Alert.alert('No Cards', 'No starred cards to study. Star some cards first!');
+    if (displayCards.length === 0) {
+      Alert.alert('No Cards', 'No cards match your current filters (Starred/Due).');
       return;
     }
     router.push({
@@ -146,6 +150,7 @@ export default function DeckDetailScreen() {
       params: {
         shuffle: shuffle ? '1' : '0',
         starredOnly: showStarredOnly ? '1' : '0',
+        dueOnly: showDueOnly ? '1' : '0',
       },
     });
   };
@@ -247,6 +252,15 @@ export default function DeckDetailScreen() {
                 <Ionicons name={showStarredOnly ? 'star' : 'star-outline'} size={16} color={showStarredOnly ? colors.paper : colors.inkSoft} />
                 <Text style={[styles.optionText, showStarredOnly && styles.optionTextActive]}>
                   Starred Only{starredCount > 0 ? ` (${starredCount})` : ''}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.optionChip, showDueOnly && { backgroundColor: deckColor, borderColor: deckColor }]}
+                onPress={() => setShowDueOnly(!showDueOnly)}
+              >
+                <Ionicons name="time" size={16} color={showDueOnly ? colors.paper : colors.inkSoft} />
+                <Text style={[styles.optionText, showDueOnly && styles.optionTextActive]}>
+                  Due Only{dueCount > 0 ? ` (${dueCount})` : ''}
                 </Text>
               </Pressable>
               <Pressable

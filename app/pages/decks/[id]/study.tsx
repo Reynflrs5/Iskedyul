@@ -9,13 +9,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, Animated, Image,
-  PanResponder, Dimensions, StatusBar, Easing,
+  PanResponder, Dimensions, StatusBar, Easing, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import Markdown from 'react-native-markdown-display';
 import { supabase } from '../../../../utils/supabase';
+import { updateStreak, incrementCardsLearned, incrementSessions, checkAndAwardBadges, ALL_BADGES, type BadgeId } from '../../../../utils/gamification';
 import { colors, radius, spacing, type, shadows } from '../../../styles/welcome.styles';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -175,7 +177,11 @@ function FlashCard({
           <View style={[styles.sideLabelPill, { backgroundColor: deckColor + '18' }]}>
             <Text style={[styles.sideLabel, { color: deckColor }]}>TERM</Text>
           </View>
-          <Text style={styles.cardTerm}>{card.term}</Text>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} style={{ width: '100%', marginVertical: 40 }} showsVerticalScrollIndicator={false}>
+            <Markdown style={markdownFrontStyles}>
+              {card.term}
+            </Markdown>
+          </ScrollView>
           <View style={[styles.tapHint, { backgroundColor: deckColor + '18' }]}>
             <Ionicons name="sync-outline" size={13} color={deckColor} />
             <Text style={[styles.tapHintText, { color: deckColor }]}>Tap to flip</Text>
@@ -189,7 +195,11 @@ function FlashCard({
           <View style={styles.sideLabelPillLight}>
             <Text style={styles.sideLabelLight}>DEFINITION</Text>
           </View>
-          <Text style={styles.cardDefinition}>{card.definition}</Text>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} style={{ width: '100%', marginVertical: 40 }} showsVerticalScrollIndicator={false}>
+            <Markdown style={markdownBackStyles}>
+              {card.definition}
+            </Markdown>
+          </ScrollView>
         </Animated.View>
       </Pressable>
     </Animated.View>
@@ -197,10 +207,11 @@ function FlashCard({
 }
 
 export default function StudyScreen() {
-  const { id, shuffle: shuffleParam, starredOnly: starredParam } = useLocalSearchParams<{ id: string; shuffle?: string; starredOnly?: string }>();
+  const { id, shuffle: shuffleParam, starredOnly: starredParam, dueOnly: dueParam } = useLocalSearchParams<{ id: string; shuffle?: string; starredOnly?: string; dueOnly?: string }>();
   const insets = useSafeAreaInsets();
   const shouldShuffle = shuffleParam !== '0';
   const starredOnly = starredParam === '1';
+  const dueOnly = dueParam === '1';
 
   const [queue, setQueue] = useState<any[]>([]);
   const [reviewedCount, setReviewedCount] = useState(0);
@@ -211,6 +222,11 @@ export default function StudyScreen() {
   const [finished, setFinished] = useState(false);
   const [ready, setReady] = useState(false); // true = show intro, false = show cards
   const [started, setStarted] = useState(false); // user pressed Start
+  
+  // Track cards missed in this session to calculate quality score for SRS
+  const [missedCardIds, setMissedCardIds] = useState<Set<string>>(new Set());
+  const [cardUpdates, setCardUpdates] = useState<any[]>([]);
+  const [newBadges, setNewBadges] = useState<BadgeId[]>([]);
 
   // --- Entrance motion, shared across the intro / study / done states ---
   const introAnim = useRef(new Animated.Value(0)).current;
@@ -257,32 +273,94 @@ export default function StudyScreen() {
 
     const { data } = await supabase.from('cards').select('*').eq('deck_id', id).order('created_at');
     if (data && data.length > 0) {
-      let cardPool = starredOnly ? data.filter(c => c.starred) : data;
-      if (cardPool.length === 0) cardPool = data; // fallback if no starred
+      let cardPool = data;
+      if (starredOnly) {
+        cardPool = cardPool.filter(c => c.starred);
+      }
+      if (dueOnly) {
+        cardPool = cardPool.filter(c => c.next_review_date && new Date(c.next_review_date) <= new Date());
+      }
+      if (cardPool.length === 0) cardPool = data; // fallback if no matching cards
+
       const ordered = shouldShuffle ? [...cardPool].sort(() => Math.random() - 0.5) : cardPool;
       setQueue(ordered);
       setTotalCount(ordered.length);
       setReviewedCount(0);
       setGotItCount(0);
       setFinished(false);
+      setMissedCardIds(new Set());
+      setCardUpdates([]);
     }
     setReady(true); // cards loaded → show intro screen
   };
 
   const handleSwipeRight = async () => {
+    const current = queue[0];
     const newQueue = queue.slice(1);
     const newReviewed = reviewedCount + 1;
     const newGotIt = gotItCount + 1;
     setReviewedCount(newReviewed);
     setGotItCount(newGotIt);
     setQueue(newQueue);
+
+    // Calculate SRS fields
+    const quality = missedCardIds.has(current.id) ? 1 : 4; // 1 = incorrect, 4 = good
+    let { repetition = 0, interval = 0, ease_factor = 2.5 } = current;
+
+    if (quality >= 3) {
+      if (repetition === 0) interval = 1;
+      else if (repetition === 1) interval = 6;
+      else interval = Math.round(interval * ease_factor);
+      repetition += 1;
+    } else {
+      repetition = 0;
+      interval = 1;
+    }
+
+    ease_factor = ease_factor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+    if (ease_factor < 1.3) ease_factor = 1.3;
+
+    const next_review_date = new Date();
+    next_review_date.setDate(next_review_date.getDate() + interval);
+
+    const updateData = {
+      id: current.id,
+      repetition,
+      interval,
+      ease_factor,
+      next_review_date: next_review_date.toISOString(),
+    };
+    
+    setCardUpdates(prev => [...prev, updateData]);
+
     if (newQueue.length === 0) {
       setFinished(true);
       await supabase.from('decks').update({ reviewed: newGotIt, last_studied: new Date().toISOString() }).eq('id', id);
+      
+      // Batch update all updated cards (SRS)
+      const allUpdates = [...cardUpdates, updateData];
+      for (const update of allUpdates) {
+        await supabase.from('cards').update({
+          repetition: update.repetition,
+          interval: update.interval,
+          ease_factor: update.ease_factor,
+          next_review_date: update.next_review_date
+        }).eq('id', update.id);
+      }
+
+      // ── Gamification ──────────────────────────────────────────────────────
+      const streak     = await updateStreak();
+      const totalCards = await incrementCardsLearned(newGotIt);
+      const totalSessions = await incrementSessions();
+      const isPerfect  = newGotIt === totalCount;
+      const earned     = await checkAndAwardBadges({ totalCards, totalSessions, streak, perfectSession: isPerfect });
+      setNewBadges(earned);
     }
   };
 
   const handleSwipeLeft = () => {
+    const current = queue[0];
+    setMissedCardIds(prev => new Set(prev).add(current.id));
     // Move card to back of queue
     setQueue((prev) => [...prev.slice(1), prev[0]]);
   };
@@ -418,6 +496,25 @@ export default function StudyScreen() {
               <Text style={[styles.doneBtnText, { color: colors.paper }]}>Done</Text>
             </PressScale>
           </View>
+
+          {/* Newly earned badges */}
+          {newBadges.length > 0 && (
+            <View style={styles.newBadgesWrap}>
+              <Text style={styles.newBadgesTitle}>🎉 Badges Unlocked!</Text>
+              {newBadges.map(id => {
+                const b = ALL_BADGES.find(x => x.id === id)!;
+                return (
+                  <View key={id} style={styles.newBadgeChip}>
+                    <Text style={{ fontSize: 22 }}>{b.emoji}</Text>
+                    <View>
+                      <Text style={styles.newBadgeChipTitle}>{b.title}</Text>
+                      <Text style={styles.newBadgeChipDesc}>{b.desc}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </Animated.View>
       </View>
     );
@@ -712,4 +809,52 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, ...shadows.soft,
   },
   doneBtnText: { ...type.label, fontSize: 14 },
+  addCardBtn: {
+    borderRadius: radius.md, paddingVertical: 14, ...shadows.soft, minHeight: 48,
+  },
+  addCardText: { ...type.label, color: colors.paper, fontSize: 15 },
+  newBadgesWrap: {
+    width: '100%',
+    backgroundColor: colors.paperRaised,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+    ...shadows.soft,
+  },
+  newBadgesTitle: {
+    ...type.label,
+    color: colors.ink,
+    textAlign: 'center' as const,
+    marginBottom: 2,
+  },
+  newBadgeChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.sm,
+    backgroundColor: colors.marigoldSoft,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+  },
+  newBadgeChipTitle: { ...type.label, color: colors.ink, fontSize: 13 },
+  newBadgeChipDesc: { ...type.caption, color: colors.inkSoft, fontSize: 11 },
 });
+
+const markdownFrontStyles = {
+  body: { ...type.h1, fontSize: 24, color: colors.ink, textAlign: 'center' as const, lineHeight: 32, fontWeight: '700' as const },
+  code_inline: { backgroundColor: colors.border, padding: 4, borderRadius: 4, fontFamily: 'monospace' },
+  code_block: { backgroundColor: colors.border, padding: 8, borderRadius: 8, fontFamily: 'monospace' },
+  strong: { fontWeight: 'bold' as const },
+  em: { fontStyle: 'italic' as const },
+  link: { color: colors.periwinkle },
+};
+
+const markdownBackStyles = {
+  body: { ...type.body, fontSize: 18, color: colors.paper, textAlign: 'center' as const, lineHeight: 28 },
+  code_inline: { backgroundColor: 'rgba(255,255,255,0.2)', padding: 4, borderRadius: 4, fontFamily: 'monospace', color: colors.paper },
+  code_block: { backgroundColor: 'rgba(255,255,255,0.2)', padding: 8, borderRadius: 8, fontFamily: 'monospace', color: colors.paper },
+  strong: { fontWeight: 'bold' as const, color: colors.paper },
+  em: { fontStyle: 'italic' as const, color: colors.paper },
+  link: { color: colors.marigold, textDecorationLine: 'underline' as const },
+};

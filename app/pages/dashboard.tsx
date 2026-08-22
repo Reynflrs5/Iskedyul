@@ -9,14 +9,17 @@ import {
     Easing,
     useWindowDimensions,
     Alert,
+    Platform,
+    Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
-import { styles, colors } from '../styles/dashboard.styles';
+import { styles, colors, dashGamStyles } from '../styles/dashboard.styles';
 import { WEEK_DAYS } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
+import { getStats, getEarnedBadges, ALL_BADGES } from '../../utils/gamification';
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -27,6 +30,17 @@ const PRIORITY_COLOR: Record<string, string> = {
     medium: colors.periwinkle,
     low: colors.sage,
 };
+
+// Streak milestones used to show "next goal" progress on the streak card.
+const STREAK_MILESTONES = [3, 7, 14, 30, 60, 100, 200, 365];
+
+function getStreakMilestone(streak: number) {
+    const next = STREAK_MILESTONES.find((m) => m > streak) ?? streak + 30;
+    const prev = [...STREAK_MILESTONES].reverse().find((m) => m <= streak) ?? 0;
+    const span = next - prev;
+    const progress = span > 0 ? clamp((streak - prev) / span, 0, 1) : 1;
+    return { next, progress };
+}
 
 function getGreeting() {
     const hour = new Date().getHours();
@@ -68,15 +82,28 @@ export default function DashboardScreen() {
     const { width } = useWindowDimensions();
     const insets = useSafeAreaInsets();
     const horizontalPadding = clamp(width * 0.06, 18, 32);
-    const maxContentWidth = 560;
+
+    // --- Responsive breakpoints ---
+    // Covers small phones (e.g. iPhone SE / compact Android) up through
+    // tablets, on both iOS and Android, without hardcoding one device size.
+    const isCompact = width < 380; // stat chips fold into a 2x2 grid
+    const isTablet = width >= 700; // wider max content column + larger type
+    const maxContentWidth = isTablet ? 680 : 560;
+    const heroTitleSize = isTablet ? 28 : isCompact ? 22 : 25;
 
     const [userName, setUserName] = useState('');
     const [tasks, setTasks] = useState<any[]>([]);
     const [classes, setClasses] = useState<any[]>([]);
     const [classesToday, setClassesToday] = useState(0);
+    const [streak, setStreak] = useState(0);
+    const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
+    const [totalCardsLearned, setTotalCardsLearned] = useState(0);
+    const [showStatsModal, setShowStatsModal] = useState(false);
 
     const tasksDueToday = tasks.filter((t) => !t.done).length;
     const tasksDone = tasks.filter((t) => t.done).length;
+    const totalTasks = tasksDueToday + tasksDone;
+    const tasksCompletionPct = totalTasks > 0 ? Math.round((tasksDone / totalTasks) * 100) : 0;
 
     // Fetch data from Supabase when the dashboard loads or comes into focus
     useFocusEffect(
@@ -112,6 +139,13 @@ export default function DashboardScreen() {
                     ).length;
                     setClassesToday(todayCount);
                 }
+
+                // 4. Load gamification stats
+                const stats = await getStats();
+                setStreak(stats.streak);
+                setTotalCardsLearned(stats.totalCards);
+                const badges = await getEarnedBadges();
+                setEarnedBadges(badges);
             }
 
             fetchDashboardData();
@@ -172,6 +206,19 @@ export default function DashboardScreen() {
         );
     }, [classes, todayIndex]);
 
+    // Streak milestone progress — drives the little bar on the streak card
+    // so "3 day streak" visibly means something instead of a bare number.
+    const { next: nextMilestone, progress: milestoneProgress } = useMemo(
+        () => getStreakMilestone(streak),
+        [streak]
+    );
+    const daysToMilestone = Math.max(0, nextMilestone - streak);
+    const streakEmoji = streak === 0 ? '😴' : streak >= 30 ? '🏆' : streak >= 7 ? '⚡' : streak >= 3 ? '🔥' : '✨';
+    const streakMessage =
+        streak === 0
+            ? 'Review a deck today to start your streak'
+            : `${daysToMilestone} day${daysToMilestone === 1 ? '' : 's'} to your ${nextMilestone}-day milestone`;
+
     // --- Staggered entrance ---
     const heroAnim = useRef(new Animated.Value(0)).current;
     const sheetAnim = useRef(new Animated.Value(0)).current;
@@ -221,36 +268,64 @@ export default function DashboardScreen() {
                     <View style={{ width: '100%', maxWidth: maxContentWidth, alignSelf: 'center' }}>
                         <View style={styles.heroTopRow}>
                             <View style={styles.heroGreetingCol}>
-                                <Text style={styles.heroEyebrow}>{getTodayLabel()}</Text>
-                                <Text style={styles.heroGreeting}>
+                                {/* Redesigned date: a small pill badge instead of plain caps text,
+                                    so "today" reads as a distinct, glanceable chip. */}
+                                <View style={styles.heroDateBadge}>
+                                    <Ionicons name="calendar-outline" size={12} color={colors.marigold} />
+                                    <Text
+                                        style={styles.heroDateBadgeText}
+                                        numberOfLines={1}
+                                        adjustsFontSizeToFit
+                                    >
+                                        {getTodayLabel()}
+                                    </Text>
+                                </View>
+                                <Text
+                                    style={[styles.heroGreeting, { fontSize: heroTitleSize }]}
+                                    numberOfLines={1}
+                                    adjustsFontSizeToFit
+                                    minimumFontScale={0.8}
+                                >
                                     {getGreeting()}{userName ? `, ${userName.split(' ')[0]}` : ''}
                                 </Text>
-                                <Text style={styles.heroSubtitle}>
-                                    {tasksDueToday > 0
-                                        ? `You have ${tasksDueToday} task${tasksDueToday > 1 ? 's' : ''} due`
-                                        : "You're all caught up"}
-                                </Text>
+                                <View style={styles.heroSubtitleRow}>
+                                    <Text style={styles.heroSubtitle}>
+                                        {tasksDueToday > 0
+                                            ? `${tasksDueToday} task${tasksDueToday > 1 ? 's' : ''} due`
+                                            : "You're all caught up"}
+                                    </Text>
+                                    {classesToday > 0 && (
+                                        <>
+                                            <View style={styles.heroSubtitleDot} />
+                                            <Text style={styles.heroSubtitle}>
+                                                {classesToday} class{classesToday > 1 ? 'es' : ''} today
+                                            </Text>
+                                        </>
+                                    )}
+                                </View>
                             </View>
                             <View style={styles.heroActions}>
                                 <Pressable
-                                  style={styles.heroIconButton}
-                                  onPress={() => {
-                                    const pendingCount = tasks.filter((t) => !t.done).length;
-                                    Alert.alert(
-                                      '🔔 Notifications',
-                                      pendingCount > 0
-                                        ? `You have ${pendingCount} pending task${pendingCount > 1 ? 's' : ''}.`
-                                        : 'No pending notifications.',
-                                      [{ text: 'OK' }]
-                                    );
-                                  }}
+                                    style={styles.heroIconButton}
+                                    hitSlop={8}
+                                    onPress={() => {
+                                        const pendingCount = tasks.filter((t) => !t.done).length;
+                                        Alert.alert(
+                                            '🔔 Notifications',
+                                            pendingCount > 0
+                                                ? `You have ${pendingCount} pending task${pendingCount > 1 ? 's' : ''}.`
+                                                : 'No pending notifications.',
+                                            [{ text: 'OK' }]
+                                        );
+                                    }}
                                 >
                                     <Ionicons name="notifications-outline" size={18} color={colors.paper} />
+                                    {tasksDueToday > 0 && <View style={styles.heroNotifDot} />}
                                 </Pressable>
-                                <Pressable onPress={() => router.push('/pages/profile' as any)}>
-                                  <View style={[styles.avatar, { width: 40, height: 40 }]}>
-                                      <Text style={styles.avatarText}>{userName ? userName.charAt(0).toUpperCase() : '?'}</Text>
-                                  </View>
+                                <Pressable onPress={() => router.push('/pages/profile' as any)} hitSlop={8}>
+                                    <View style={[styles.avatar, { width: 40, height: 40 }]}>
+                                        <Text style={styles.avatarText}>{userName ? userName.charAt(0).toUpperCase() : '?'}</Text>
+                                    </View>
                                 </Pressable>
                             </View>
                         </View>
@@ -278,30 +353,49 @@ export default function DashboardScreen() {
                             })}
                         </View>
 
-                        {/* Quick stats, on-dark chips */}
-                        <View style={styles.heroStatsRow}>
-                            <View style={styles.heroStatChip}>
-                                <View style={[styles.heroStatIconWrap, { backgroundColor: 'rgba(232,162,61,0.18)' }]}>
-                                    <Ionicons name="time-outline" size={14} color={colors.marigold} />
+                        {/* Today's task progress — makes "pending vs done" legible
+                            at a glance instead of two disconnected numbers. */}
+                        {totalTasks > 0 && (
+                            <View style={styles.heroProgressCard}>
+                                <View style={styles.heroProgressTopRow}>
+                                    <Text style={styles.heroProgressLabel}>
+                                        {tasksDone} of {totalTasks} tasks done today
+                                    </Text>
+                                    <Text style={styles.heroProgressPct}>{tasksCompletionPct}%</Text>
                                 </View>
-                                <Text style={styles.heroStatNumber}>{tasksDueToday}</Text>
-                                <Text style={styles.heroStatLabel}>Pending</Text>
-                            </View>
-                            <View style={styles.heroStatChip}>
-                                <View style={[styles.heroStatIconWrap, { backgroundColor: 'rgba(63,143,134,0.2)' }]}>
-                                    <Ionicons name="checkmark-circle-outline" size={14} color={colors.sage} />
+                                <View style={styles.heroProgressTrack}>
+                                    <View style={[styles.heroProgressFill, { width: `${tasksCompletionPct}%` }]} />
                                 </View>
-                                <Text style={styles.heroStatNumber}>{tasksDone}</Text>
-                                <Text style={styles.heroStatLabel}>Done</Text>
                             </View>
-                            <View style={styles.heroStatChip}>
-                                <View style={[styles.heroStatIconWrap, { backgroundColor: 'rgba(108,123,209,0.2)' }]}>
-                                    <Ionicons name="calendar-outline" size={14} color={colors.periwinkle} />
-                                </View>
-                                <Text style={styles.heroStatNumber}>{classesToday}</Text>
-                                <Text style={styles.heroStatLabel}>Classes today</Text>
+                        )}
+
+                        {/* Compact summary pill to save vertical space */}
+                        <Pressable 
+                            style={styles.compactStatsPill}
+                            onPress={() => setShowStatsModal(true)}
+                        >
+                            <View style={styles.compactStat}>
+                                <Ionicons name="time-outline" size={14} color={colors.marigold} />
+                                <Text style={styles.compactStatText}>{tasksDueToday}</Text>
                             </View>
-                        </View>
+                            <View style={styles.compactStatDivider} />
+                            <View style={styles.compactStat}>
+                                <Ionicons name="checkmark-circle-outline" size={14} color={colors.sage} />
+                                <Text style={styles.compactStatText}>{tasksDone}</Text>
+                            </View>
+                            <View style={styles.compactStatDivider} />
+                            <View style={styles.compactStat}>
+                                <Ionicons name="calendar-outline" size={14} color={colors.periwinkle} />
+                                <Text style={styles.compactStatText}>{classesToday}</Text>
+                            </View>
+                            <View style={styles.compactStatDivider} />
+                            <View style={styles.compactStat}>
+                                <Text style={{ fontSize: 13 }}>{streakEmoji}</Text>
+                                <Text style={styles.compactStatText}>{streak}</Text>
+                            </View>
+                            <View style={styles.compactStatDivider} />
+                            <Ionicons name="chevron-forward" size={14} color="rgba(251,247,239,0.5)" />
+                        </Pressable>
                     </View>
                 </Animated.View>
 
@@ -320,11 +414,89 @@ export default function DashboardScreen() {
                     ]}
                 >
                     <View style={{ width: '100%', maxWidth: maxContentWidth, alignSelf: 'center' }}>
+
+                        {/* ── Study Streak & Badges card — redesigned ── */}
+                        <FadeInSection anim={sheetAnim}>
+                            <Pressable
+                                style={dashGamStyles.card}
+                                onPress={() => router.push('/pages/decks/progress' as any)}
+                                android_ripple={{ color: colors.border }}
+                            >
+                                <View style={dashGamStyles.cardTopRow}>
+                                    {/* Left: streak, now inside a rounded badge so the
+                                        number and emoji don't visually collide */}
+                                    <View style={dashGamStyles.streakBlock}>
+                                        <View style={dashGamStyles.streakBadge}>
+                                            <Text style={dashGamStyles.streakEmoji}>{streakEmoji}</Text>
+                                        </View>
+                                        <Text style={dashGamStyles.streakNum}>{streak}</Text>
+                                        <Text style={dashGamStyles.streakLabel}>
+                                            day{streak === 1 ? '' : 's'} streak
+                                        </Text>
+                                    </View>
+
+                                    <View style={dashGamStyles.divider} />
+
+                                    {/* Right: earned badges preview */}
+                                    <View style={dashGamStyles.badgesBlock}>
+                                        <Text style={dashGamStyles.badgesTitle}>
+                                            🏅 {earnedBadges.length} / {ALL_BADGES.length} Badges
+                                        </Text>
+                                        <View style={dashGamStyles.badgeRow}>
+                                            {ALL_BADGES.slice(0, isCompact ? 4 : 5).map(b => (
+                                                <Text
+                                                    key={b.id}
+                                                    style={[
+                                                        dashGamStyles.badgeEmoji,
+                                                        !earnedBadges.includes(b.id) && { opacity: 0.18 }
+                                                    ]}
+                                                >
+                                                    {b.emoji}
+                                                </Text>
+                                            ))}
+                                            {ALL_BADGES.length > (isCompact ? 4 : 5) && (
+                                                <Text style={dashGamStyles.badgeMore}>
+                                                    +{ALL_BADGES.length - (isCompact ? 4 : 5)}
+                                                </Text>
+                                            )}
+                                        </View>
+                                        <Text style={dashGamStyles.cardsSub}>{totalCardsLearned} cards reviewed</Text>
+                                    </View>
+
+                                    <View style={dashGamStyles.chevronWrap}>
+                                        <Ionicons name="chevron-forward" size={16} color={colors.inkFaint} />
+                                    </View>
+                                </View>
+
+                                {/* Milestone progress — turns the streak into a visible
+                                    goal instead of a static number that never explains
+                                    itself. */}
+                                <View style={dashGamStyles.milestoneRow}>
+                                    <View style={dashGamStyles.milestoneTextRow}>
+                                        <Text style={dashGamStyles.milestoneText} numberOfLines={1}>
+                                            {streakMessage}
+                                        </Text>
+                                        {streak > 0 && (
+                                            <Text style={dashGamStyles.milestoneTextStrong}>{nextMilestone}d</Text>
+                                        )}
+                                    </View>
+                                    <View style={dashGamStyles.milestoneTrack}>
+                                        <View
+                                            style={[
+                                                dashGamStyles.milestoneFill,
+                                                { width: `${Math.round(milestoneProgress * 100)}%` },
+                                            ]}
+                                        />
+                                    </View>
+                                </View>
+                            </Pressable>
+                        </FadeInSection>
+
                         {/* Today's schedule */}
                         <FadeInSection anim={scheduleAnim}>
                             <View style={styles.sectionRow}>
                                 <Text style={styles.sectionTitle}>Today's Schedule</Text>
-                                <Pressable onPress={() => router.push('/pages/schedule' as any)}>
+                                <Pressable onPress={() => router.push('/pages/schedule' as any)} hitSlop={8}>
                                     <Text style={styles.sectionLink}>See all</Text>
                                 </Pressable>
                             </View>
@@ -340,6 +512,7 @@ export default function DashboardScreen() {
                                         style={styles.scheduleCard}
                                         onLongPress={() => confirmDeleteClass(c.id, c.subject)}
                                         delayLongPress={400}
+                                        android_ripple={{ color: colors.border }}
                                     >
                                         <View style={styles.scheduleAccentBar} />
                                         <View style={styles.scheduleBody}>
@@ -348,8 +521,8 @@ export default function DashboardScreen() {
                                                 <Text style={styles.scheduleTimeEnd}>{c.time_end}</Text>
                                             </View>
                                             <View style={styles.scheduleInfoCol}>
-                                                <Text style={styles.scheduleSubject}>{c.subject}</Text>
-                                                <Text style={styles.scheduleLocation}>{c.location}</Text>
+                                                <Text style={styles.scheduleSubject} numberOfLines={1}>{c.subject}</Text>
+                                                <Text style={styles.scheduleLocation} numberOfLines={1}>{c.location}</Text>
                                             </View>
                                             <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
                                         </View>
@@ -362,7 +535,7 @@ export default function DashboardScreen() {
                         <FadeInSection anim={tasksAnim}>
                             <View style={[styles.sectionRow, { marginTop: 8 }]}>
                                 <Text style={styles.sectionTitle}>Upcoming Tasks</Text>
-                                <Pressable onPress={() => router.push('/pages/tasks' as any)}>
+                                <Pressable onPress={() => router.push('/pages/tasks' as any)} hitSlop={8}>
                                     <Text style={styles.sectionLink}>See all</Text>
                                 </Pressable>
                             </View>
@@ -379,12 +552,15 @@ export default function DashboardScreen() {
                                         onLongPress={() => confirmDeleteTask(t.id, t.title)}
                                         delayLongPress={400}
                                         style={styles.taskRow}
+                                        android_ripple={{ color: colors.border }}
                                     >
                                         <View style={[styles.checkbox, t.done && styles.checkboxChecked]}>
                                             {t.done && <Ionicons name="checkmark" size={14} color={colors.paper} />}
                                         </View>
                                         <View style={styles.taskInfoCol}>
-                                            <Text style={[styles.taskTitle, t.done && styles.taskTitleDone]}>{t.title}</Text>
+                                            <Text style={[styles.taskTitle, t.done && styles.taskTitleDone]} numberOfLines={1}>
+                                                {t.title}
+                                            </Text>
                                             <View style={styles.taskMetaRow}>
                                                 <View style={[styles.priorityDot, { backgroundColor: PRIORITY_COLOR[t.priority] }]} />
                                                 <Text style={styles.taskMetaText}>{t.due}</Text>
@@ -399,6 +575,56 @@ export default function DashboardScreen() {
             </ScrollView>
 
             <BottomNav />
+
+            {/* --- Stats Modal --- */}
+            <Modal
+                visible={showStatsModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowStatsModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Daily Overview</Text>
+                            <Pressable onPress={() => setShowStatsModal(false)} hitSlop={10}>
+                                <Ionicons name="close" size={24} color={colors.ink} />
+                            </Pressable>
+                        </View>
+                        
+                        <View style={[styles.heroStatsRow, { marginTop: 0 }]}>
+                            <View style={[styles.heroStatChip, !isTablet && { flexBasis: '47%' }, styles.modalStatChip]}>
+                                <View style={[styles.heroStatIconWrap, { backgroundColor: 'rgba(232,162,61,0.18)' }]}>
+                                    <Ionicons name="time-outline" size={14} color={colors.marigold} />
+                                </View>
+                                <Text style={[styles.heroStatNumber, { color: colors.ink }]}>{tasksDueToday}</Text>
+                                <Text style={[styles.heroStatLabel, { color: colors.inkSoft }]}>Pending</Text>
+                            </View>
+                            <View style={[styles.heroStatChip, !isTablet && { flexBasis: '47%' }, styles.modalStatChip]}>
+                                <View style={[styles.heroStatIconWrap, { backgroundColor: 'rgba(63,143,134,0.2)' }]}>
+                                    <Ionicons name="checkmark-circle-outline" size={14} color={colors.sage} />
+                                </View>
+                                <Text style={[styles.heroStatNumber, { color: colors.ink }]}>{tasksDone}</Text>
+                                <Text style={[styles.heroStatLabel, { color: colors.inkSoft }]}>Done</Text>
+                            </View>
+                            <View style={[styles.heroStatChip, !isTablet && { flexBasis: '47%' }, styles.modalStatChip]}>
+                                <View style={[styles.heroStatIconWrap, { backgroundColor: 'rgba(108,123,209,0.2)' }]}>
+                                    <Ionicons name="calendar-outline" size={14} color={colors.periwinkle} />
+                                </View>
+                                <Text style={[styles.heroStatNumber, { color: colors.ink }]}>{classesToday}</Text>
+                                <Text style={[styles.heroStatLabel, { color: colors.inkSoft }]}>Classes today</Text>
+                            </View>
+                            <View style={[styles.heroStatChip, !isTablet && { flexBasis: '47%' }, styles.modalStatChip]}>
+                                <View style={[styles.heroStatIconWrap, { backgroundColor: 'rgba(232,162,61,0.18)' }]}>
+                                    <Text style={{ fontSize: 13 }}>{streakEmoji}</Text>
+                                </View>
+                                <Text style={[styles.heroStatNumber, { color: colors.ink }]}>{streak}</Text>
+                                <Text style={[styles.heroStatLabel, { color: colors.inkSoft }]}>Day Streak</Text>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }

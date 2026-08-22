@@ -8,12 +8,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, Pressable, StyleSheet, TextInput, ScrollView,
-  ActivityIndicator, Alert, StatusBar, KeyboardAvoidingView, Platform
+  ActivityIndicator, Alert, StatusBar, KeyboardAvoidingView, Platform, Image
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '../../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../../styles/welcome.styles';
 
@@ -24,6 +26,7 @@ export default function AIGenerateScreen() {
   const insets = useSafeAreaInsets();
 
   const [input, setInput] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deckColor, setDeckColor] = useState(colors.marigold);
 
@@ -69,9 +72,25 @@ export default function AIGenerateScreen() {
     }
   };
 
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Could not open image picker');
+    }
+  };
+
   const handleGenerate = async () => {
-    if (!input.trim()) {
-      Alert.alert('Empty Input', 'Please paste some notes or enter a topic.');
+    if (!input.trim() && !imageUri) {
+      Alert.alert('Empty Input', 'Please paste some notes, enter a topic, or upload an image.');
       return;
     }
 
@@ -85,6 +104,31 @@ export default function AIGenerateScreen() {
         throw new Error('Gemini API key is missing.');
       }
 
+
+      const parts: any[] = [
+        {
+          text: `You are a flashcard generator. Extract key facts from the following text or image and turn them into flashcards. 
+If the text is just a short topic (e.g., "Mitochondria" or "World War 2"), generate 5-10 useful flashcards about that topic.
+Return ONLY a valid JSON array of objects with "term" and "definition" properties.
+Example: [{"term": "Photosynthesis", "definition": "Process by which plants use sunlight to synthesize foods"}]
+Do not include \`\`\`json or any markdown. Return only the array.
+
+Text/Topic:
+${input || 'See attached image.'}
+`
+        }
+      ];
+
+      if (imageUri) {
+        const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
+        parts.push({
+          inlineData: {
+            data: base64,
+            mimeType: "image/jpeg"
+          }
+        });
+      }
+
       const response = await fetch(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' + GEMINI_API_KEY,
         {
@@ -93,20 +137,7 @@ export default function AIGenerateScreen() {
           body: JSON.stringify({
             contents: [
               {
-                parts: [
-                  {
-                    text: `
-You are a flashcard generator. Extract key facts from the following text and turn them into flashcards. 
-If the text is just a short topic (e.g., "Mitochondria" or "World War 2"), generate 5-10 useful flashcards about that topic.
-Return ONLY a valid JSON array of objects with "term" and "definition" properties.
-Example: [{"term": "Photosynthesis", "definition": "Process by which plants use sunlight to synthesize foods"}]
-Do not include \`\`\`json or any markdown. Return only the array.
-
-Text/Topic:
-${input}
-`
-                  }
-                ]
+                parts: parts
               }
             ]
           }),
@@ -181,14 +212,36 @@ ${input}
           <View style={[styles.inputWrap, { borderColor: deckColor }]}>
             <TextInput
               style={styles.input}
-              placeholder="Paste notes here..."
+              placeholder="Paste notes or type a topic here..."
               placeholderTextColor={colors.inkFaint}
               value={input}
               onChangeText={setInput}
               multiline
               textAlignVertical="top"
-              autoFocus
             />
+          </View>
+
+          <View style={styles.imageSection}>
+            <Text style={styles.label}>OR UPLOAD AN IMAGE</Text>
+            {imageUri ? (
+              <View style={styles.imagePreviewWrap}>
+                <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                <Pressable
+                  style={styles.removeImageBtn}
+                  onPress={() => setImageUri(null)}
+                >
+                  <Ionicons name="close" size={20} color="#fff" />
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                style={[styles.uploadBtn, { borderColor: deckColor }]}
+                onPress={pickImage}
+              >
+                <Ionicons name="image-outline" size={24} color={deckColor} />
+                <Text style={[styles.uploadBtnText, { color: deckColor }]}>Upload Notes / Textbook Image</Text>
+              </Pressable>
+            )}
           </View>
         </ScrollView>
 
@@ -252,4 +305,38 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, height: 52, ...shadows.soft,
   },
   generateText: { ...type.label, color: '#fff', fontSize: 15 },
+  imageSection: {
+    marginTop: spacing.xl,
+  },
+  uploadBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    borderWidth: 1.5, borderStyle: 'dashed', borderRadius: radius.md,
+    paddingVertical: spacing.lg, backgroundColor: colors.paperRaised,
+  },
+  uploadBtnText: { ...type.label, fontSize: 14 },
+  imagePreviewWrap: {
+    position: 'relative',
+    height: 200,
+    width: '100%',
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

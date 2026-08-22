@@ -1,7 +1,21 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { colors, type, spacing, radius, shadows } from './welcome.styles';
 
 export { colors, type, spacing, radius, shadows };
+
+// Small cross-platform shadow helper so new elements look right on both
+// iOS (shadow*) and Android (elevation) without depending on whatever
+// `shadows.soft` happens to contain.
+const platformCard = Platform.select({
+    ios: {
+        shadowColor: '#1A1A1A',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+    },
+    android: { elevation: 2 },
+    default: {},
+});
 
 export const styles = StyleSheet.create({
     container: {
@@ -33,21 +47,48 @@ export const styles = StyleSheet.create({
         flex: 1,
         paddingRight: spacing.md,
     },
-    heroEyebrow: {
+
+    // --- Redesigned date badge (replaces the plain eyebrow text) ---
+    heroDateBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: 6,
+        backgroundColor: 'rgba(232,162,61,0.14)',
+        borderWidth: 1,
+        borderColor: 'rgba(232,162,61,0.28)',
+        borderRadius: radius.pill,
+        paddingVertical: 5,
+        paddingHorizontal: 10,
+        marginBottom: spacing.xs,
+    },
+    heroDateBadgeText: {
         ...type.overline,
-        color: 'rgba(251,247,239,0.55)', // paper at low opacity
-        marginBottom: spacing.xxs,
+        fontSize: 11,
+        letterSpacing: 0.4,
+        color: colors.marigold,
     },
     heroGreeting: {
         ...type.h1,
         fontSize: 25,
         color: colors.paper,
     },
+    heroSubtitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 3,
+    },
     heroSubtitle: {
         ...type.body,
         fontSize: 14,
         color: 'rgba(251,247,239,0.65)',
-        marginTop: 2,
+    },
+    heroSubtitleDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: 'rgba(251,247,239,0.35)',
     },
     heroActions: {
         flexDirection: 'row',
@@ -63,6 +104,17 @@ export const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.12)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    heroNotifDot: {
+        position: 'absolute',
+        top: 8,
+        right: 9,
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: colors.marigold,
+        borderWidth: 1.5,
+        borderColor: colors.ink,
     },
     avatar: {
         borderRadius: radius.pill,
@@ -88,7 +140,7 @@ export const styles = StyleSheet.create({
     heroWeekBarTrack: {
         alignItems: 'center',
         justifyContent: 'flex-end',
-        width: 22,
+        flex: 1,
         height: 30,
     },
     heroWeekBar: {
@@ -102,14 +154,112 @@ export const styles = StyleSheet.create({
         marginTop: 6,
     },
 
-    // --- Hero stat chips ---
+    // --- Today's task progress bar (new) ---
+    heroProgressCard: {
+        marginTop: spacing.lg,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderRadius: radius.md,
+        padding: spacing.sm,
+    },
+    heroProgressTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    heroProgressLabel: {
+        ...type.label,
+        fontSize: 12.5,
+        color: 'rgba(251,247,239,0.85)',
+    },
+    heroProgressPct: {
+        ...type.label,
+        fontSize: 12.5,
+        color: colors.marigold,
+    },
+    heroProgressTrack: {
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        overflow: 'hidden',
+    },
+    heroProgressFill: {
+        height: '100%',
+        borderRadius: 3,
+        backgroundColor: colors.marigold,
+    },
+
+    // --- Compact Stats Pill ---
+    compactStatsPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: radius.pill,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.md,
+        marginTop: spacing.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    compactStat: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    compactStatText: {
+        ...type.label,
+        fontSize: 14,
+        color: colors.paper,
+    },
+    compactStatDivider: {
+        width: 1,
+        height: 16,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+    },
+
+    // --- Modal Styles ---
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(19,42,76,0.6)', // dark ink overlay
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: colors.paper,
+        borderTopLeftRadius: radius.xl,
+        borderTopRightRadius: radius.xl,
+        padding: spacing.lg,
+        paddingBottom: spacing.xxl, // extra padding for bottom safe area
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: spacing.lg,
+    },
+    modalTitle: {
+        ...type.h1,
+        fontSize: 22,
+        color: colors.ink,
+    },
+    modalStatChip: {
+        backgroundColor: colors.paperRaised,
+        borderColor: colors.border,
+        ...shadows.soft,
+    },
+
+    // --- Hero stat chips (responsive grid: 4-across on wide screens,
+    // 2x2 on narrow phones) ---
     heroStatsRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         gap: spacing.sm,
-        marginTop: spacing.lg,
+        marginTop: spacing.sm,
     },
     heroStatChip: {
-        flex: 1,
+        flexGrow: 1,
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
@@ -287,5 +437,101 @@ export const styles = StyleSheet.create({
         ...type.body,
         fontSize: 13,
         color: colors.inkFaint,
+    },
+});
+
+// --- Streak & badges card (exported separately so dashboard.tsx keeps a
+// single import for all its styling, same pattern as before) ---
+export const dashGamStyles = StyleSheet.create({
+    card: {
+        backgroundColor: colors.paperRaised,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: spacing.md,
+        marginBottom: spacing.md,
+        ...platformCard,
+    },
+    cardTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+    },
+    streakBlock: {
+        alignItems: 'center',
+        minWidth: 66,
+        gap: 2,
+    },
+    streakBadge: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(232,162,61,0.14)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(232,162,61,0.35)',
+        marginBottom: 4,
+    },
+    streakEmoji: { fontSize: 22 },
+    streakNum: { ...type.h1, fontSize: 22, color: colors.ink, lineHeight: 26 },
+    streakLabel: { ...type.caption, color: colors.inkSoft, fontSize: 10 },
+    divider: {
+        width: 1,
+        alignSelf: 'stretch',
+        backgroundColor: colors.border,
+    },
+    badgesBlock: {
+        flex: 1,
+        gap: 4,
+        minWidth: 0,
+    },
+    badgesTitle: { ...type.label, color: colors.ink, fontSize: 13 },
+    badgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        flexWrap: 'wrap',
+    },
+    badgeEmoji: { fontSize: 20 },
+    badgeMore: { ...type.caption, color: colors.inkSoft, fontSize: 11, marginLeft: 2 },
+    cardsSub: { ...type.caption, color: colors.inkFaint, fontSize: 10 },
+    chevronWrap: {
+        marginLeft: spacing.xs,
+    },
+
+    // Milestone progress footer
+    milestoneRow: {
+        marginTop: spacing.sm,
+        paddingTop: spacing.sm,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+    },
+    milestoneTextRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    milestoneText: {
+        ...type.caption,
+        fontSize: 11,
+        color: colors.inkSoft,
+    },
+    milestoneTextStrong: {
+        ...type.caption,
+        fontSize: 11,
+        fontWeight: '700',
+        color: colors.marigold,
+    },
+    milestoneTrack: {
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: colors.border,
+        overflow: 'hidden',
+    },
+    milestoneFill: {
+        height: '100%',
+        borderRadius: 3,
+        backgroundColor: colors.marigold,
     },
 });

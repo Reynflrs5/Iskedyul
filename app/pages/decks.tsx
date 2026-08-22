@@ -9,6 +9,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { styles, colors } from '../styles/decks.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
+import { getStreak, scheduleStreakReminder } from '../../utils/gamification';
 
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
 
@@ -27,6 +28,7 @@ export default function DecksScreen() {
   const maxContentWidth = 560;
 
   const [decks, setDecks] = useState<any[]>([]);
+  const [streak, setStreak] = useState(0);
 
   const heroAnim = useRef(new Animated.Value(0)).current;
   const sheetAnim = useRef(new Animated.Value(0)).current;
@@ -46,6 +48,8 @@ export default function DecksScreen() {
       ]).start();
 
       refreshDecks();
+      getStreak().then(setStreak);
+      scheduleStreakReminder(20); // remind at 8 PM if they haven't studied
     }, [heroAnim, sheetAnim])
   );
 
@@ -105,7 +109,14 @@ export default function DecksScreen() {
                     : 'Start learning with flashcards'}
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  style={[styles.addButton, { backgroundColor: 'rgba(232,162,61,0.15)' }]}
+                  onPress={() => router.push('/pages/decks/progress' as any)}
+                >
+                  <Text style={{ fontSize: 16 }}>{streak > 0 ? '🔥' : '🏅'}</Text>
+                  {streak > 0 && <Text style={{ fontSize: 11, fontWeight: '700', color: colors.marigold, marginLeft: -2 }}>{streak}</Text>}
+                </Pressable>
                 <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/import' as any)}>
                   <Ionicons name="download-outline" size={20} color={colors.marigoldInk} />
                 </Pressable>
