@@ -290,8 +290,8 @@ export default function ScheduleScreen() {
         </Animated.View>
 
       <ScrollView
-        style={{ flex: 1, marginTop: -40, zIndex: 10, elevation: 10 }}
-        contentContainerStyle={styles.scrollContent}
+        style={{ marginTop: -40, zIndex: 10, elevation: 10 }}
+        contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
@@ -300,7 +300,7 @@ export default function ScheduleScreen() {
         <Animated.View
           style={[
             styles.contentSheet,
-            { marginTop: 0 },
+            { marginTop: 0, flex: 0 },
             {
               opacity: sheetAnim,
               transform: [{ translateY: sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
