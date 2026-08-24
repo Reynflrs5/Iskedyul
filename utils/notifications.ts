@@ -45,10 +45,11 @@ export async function registerForPushNotificationsAsync() {
   return token;
 }
 
-export async function scheduleClassNotification(subject: string, location: string, startTimeStr: string, dayIndex: number) {
-  // Clear all previous local notifications to avoid duplicates (naive approach for now)
-  // In a full app, you'd track notification IDs and cancel/reschedule individually
+export async function clearAllNotifications() {
   await Notifications.cancelAllScheduledNotificationsAsync();
+}
+
+export async function scheduleClassNotification(subject: string, location: string, startTimeStr: string, dayIndex: number) {
 
   // For this prototype, let's just schedule it if it's happening today
   // parseTime logic...
@@ -93,4 +94,47 @@ export async function scheduleClassNotification(subject: string, location: strin
   });
   
   console.log(`Scheduled notification for ${subject} at ${notifyTime.toLocaleTimeString()}`);
+}
+
+export async function scheduleTaskNotification(title: string, dateStr: string) {
+  // dateStr format expected (from Tasks): e.g. "Aug 26, 2026" or YYYY-MM-DD
+  // Let's assume deadline is 11:59 PM on that day.
+  const deadline = new Date(dateStr);
+  if (isNaN(deadline.getTime())) return;
+  
+  deadline.setHours(23, 59, 0, 0);
+
+  const now = new Date();
+  // Remind 1 day before
+  const notifyTime1Day = new Date(deadline.getTime() - 24 * 60 * 60 * 1000);
+  // Remind 1 hour before
+  const notifyTime1Hour = new Date(deadline.getTime() - 60 * 60 * 1000);
+
+  if (notifyTime1Day > now) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Task Deadline Approaching!",
+        body: `Your task "${title}" is due tomorrow.`,
+        sound: true,
+      },
+      trigger: { 
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, 
+        seconds: (notifyTime1Day.getTime() - now.getTime()) / 1000 
+      },
+    });
+  }
+
+  if (notifyTime1Hour > now) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Task Due Soon!",
+        body: `Your task "${title}" is due in 1 hour.`,
+        sound: true,
+      },
+      trigger: { 
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, 
+        seconds: (notifyTime1Hour.getTime() - now.getTime()) / 1000 
+      },
+    });
+  }
 }

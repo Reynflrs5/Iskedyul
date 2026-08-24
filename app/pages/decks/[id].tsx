@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { supabase } from '../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../styles/welcome.styles';
+import PomodoroTimer from '../../../components/PomodoroTimer';
 
 function PressScale({
   onPress,
@@ -343,13 +344,14 @@ export default function DeckDetailScreen() {
         )}
       </Animated.ScrollView>
 
-      {/* Add card FAB */}
       <View style={[styles.fabWrap, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
         <PressScale style={[styles.addCardBtn, { backgroundColor: deckColor }]} onPress={goToAddCard}>
           <Ionicons name="add" size={20} color={colors.paper} />
           <Text style={styles.addCardText}>Add Card</Text>
         </PressScale>
       </View>
+      
+      <PomodoroTimer />
     </View>
   );
 }

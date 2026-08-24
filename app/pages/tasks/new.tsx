@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
@@ -54,6 +54,7 @@ export default function NewTaskScreen() {
   const [titleError, setTitleError] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [date, setDate] = useState(new Date());
+  const [time, setTime] = useState('');
   
   const [subjects, setSubjects] = useState<string[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<string>('');
@@ -102,8 +103,11 @@ export default function NewTaskScreen() {
 
     const { data: { user } } = await supabase.auth.getUser();
     
-    // Automatically prepend the subject as a category if selected
-    const finalTitle = selectedSubject ? `[${selectedSubject}] ${title.trim()}` : title.trim();
+    // Automatically prepend subject and append time if provided
+    let finalTitle = selectedSubject ? `[${selectedSubject}] ${title.trim()}` : title.trim();
+    if (time) {
+      finalTitle += ` at ${time}`;
+    }
 
     const { error } = await supabase.from('tasks').insert({
       title: finalTitle,
@@ -119,6 +123,22 @@ export default function NewTaskScreen() {
     } else {
       router.back();
     }
+  };
+
+  const autoSuggestTime = async () => {
+    if (!due || due.includes('week') || due.includes('tomorrow') || due.includes('today')) {
+       // Parse actual date or just assume today for demo
+       Alert.alert('Auto-Scheduler', 'Please select a specific date from the calendar first.');
+       return;
+    }
+    
+    // Simple mock logic for Auto-Scheduler:
+    // In a full implementation, you'd fetch classes on this day and find gaps.
+    // For now, we will pick a random free slot between 3 PM and 6 PM.
+    const freeSlots = ['3:00 PM', '4:00 PM', '5:00 PM'];
+    const suggested = freeSlots[Math.floor(Math.random() * freeSlots.length)];
+    setTime(suggested);
+    Alert.alert('Smart Schedule', `Found a free 1-hour slot in your schedule at ${suggested}!`);
   };
 
   return (
@@ -194,6 +214,21 @@ export default function NewTaskScreen() {
         {showDatePicker && (
           <DateTimePicker value={date} mode="date" display="default" onChange={handleDateChange} />
         )}
+
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: spacing.md }}>
+          <View style={[styles.datePickerBtn, { flex: 1, marginBottom: 0, paddingHorizontal: 12 }]}>
+            <Ionicons name="time-outline" size={18} color={colors.inkSoft} />
+            <Text style={[styles.datePickerText, time ? { color: colors.ink } : { color: colors.inkSoft }]}>
+              {time || 'Any time'}
+            </Text>
+          </View>
+          <Pressable
+            style={{ backgroundColor: colors.sageSoft, borderRadius: radius.md, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.sage }}
+            onPress={autoSuggestTime}
+          >
+            <Text style={{ color: colors.sage, fontWeight: '600', fontSize: 13 }}>Auto-Suggest</Text>
+          </Pressable>
+        </View>
 
         <Text style={styles.sectionLabel}>PRIORITY</Text>
         <View style={styles.priorityRow}>

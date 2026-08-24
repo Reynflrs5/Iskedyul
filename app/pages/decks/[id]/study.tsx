@@ -17,7 +17,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Markdown from 'react-native-markdown-display';
 import { supabase } from '../../../../utils/supabase';
-import { updateStreak, incrementCardsLearned, incrementSessions, checkAndAwardBadges, ALL_BADGES, type BadgeId } from '../../../../utils/gamification';
+import { updateStreak, incrementCardsLearned, incrementSessions, checkAndAwardBadges, ALL_BADGES, type BadgeId, addXP } from '../../../../utils/gamification';
 import { colors, radius, spacing, type, shadows } from '../../../styles/welcome.styles';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -355,6 +355,11 @@ export default function StudyScreen() {
       const isPerfect  = newGotIt === totalCount;
       const earned     = await checkAndAwardBadges({ totalCards, totalSessions, streak, perfectSession: isPerfect });
       setNewBadges(earned);
+      
+      // Earn XP for cards reviewed correctly
+      if (newGotIt > 0) {
+        await addXP(newGotIt * 5); // 5 XP per correct card
+      }
     }
   };
 

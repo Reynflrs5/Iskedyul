@@ -20,6 +20,12 @@ import { WEEK_DAYS } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
 import { getStats, getEarnedBadges, ALL_BADGES } from '../../utils/gamification';
+import { 
+    registerForPushNotificationsAsync, 
+    clearAllNotifications, 
+    scheduleClassNotification, 
+    scheduleTaskNotification 
+} from '../../utils/notifications';
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -96,6 +102,8 @@ export default function DashboardScreen() {
     const [classes, setClasses] = useState<any[]>([]);
     const [classesToday, setClassesToday] = useState(0);
     const [streak, setStreak] = useState(0);
+    const [level, setLevel] = useState(1);
+    const [xp, setXp] = useState(0);
     const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
     const [totalCardsLearned, setTotalCardsLearned] = useState(0);
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -143,9 +151,37 @@ export default function DashboardScreen() {
                 // 4. Load gamification stats
                 const stats = await getStats();
                 setStreak(stats.streak);
+                setLevel(stats.level);
+                setXp(stats.xp);
                 setTotalCardsLearned(stats.totalCards);
                 const badges = await getEarnedBadges();
                 setEarnedBadges(badges);
+
+                // 5. Schedule Notifications
+                await registerForPushNotificationsAsync();
+                await clearAllNotifications();
+
+                // Schedule today's classes
+                const todayIdx = (new Date().getDay() + 6) % 7;
+                if (classesData) {
+                    const todaysClasses = classesData.filter(
+                        (c: any) => c.day === todayIdx || c.day === null || c.day === undefined
+                    );
+                    todaysClasses.forEach((c: any) => {
+                        if (c.time) {
+                            scheduleClassNotification(c.subject, c.location, c.time, todayIdx);
+                        }
+                    });
+                }
+
+                // Schedule upcoming tasks
+                if (tasksData) {
+                    tasksData.forEach((t: any) => {
+                        if (!t.done && t.due) {
+                            scheduleTaskNotification(t.title, t.due);
+                        }
+                    });
+                }
             }
 
             fetchDashboardData();
@@ -423,15 +459,14 @@ export default function DashboardScreen() {
                                 android_ripple={{ color: colors.border }}
                             >
                                 <View style={dashGamStyles.cardTopRow}>
-                                    {/* Left: streak, now inside a rounded badge so the
-                                        number and emoji don't visually collide */}
+                                    {/* Left: Level badge (Replaced Streak to highlight XP) */}
                                     <View style={dashGamStyles.streakBlock}>
                                         <View style={dashGamStyles.streakBadge}>
-                                            <Text style={dashGamStyles.streakEmoji}>{streakEmoji}</Text>
+                                            <Text style={dashGamStyles.streakEmoji}>⭐</Text>
                                         </View>
-                                        <Text style={dashGamStyles.streakNum}>{streak}</Text>
+                                        <Text style={dashGamStyles.streakNum}>Lvl {level}</Text>
                                         <Text style={dashGamStyles.streakLabel}>
-                                            day{streak === 1 ? '' : 's'} streak
+                                            {xp} / {level * 100} XP
                                         </Text>
                                     </View>
 

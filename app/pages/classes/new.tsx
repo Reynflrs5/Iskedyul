@@ -61,6 +61,58 @@ export default function NewClassScreen() {
     const { data: { user } } = await supabase.auth.getUser();
 
     const days = selectedDays.length > 0 ? selectedDays : [null];
+
+    // --- Conflict Detection ---
+    const { data: existingClasses } = await supabase
+      .from('classes')
+      .select('subject, time, day')
+      .in('day', days.filter(d => d !== null));
+    
+    if (existingClasses && existingClasses.length > 0) {
+      // Parse time helper
+      const parseTime = (t: string) => {
+        const m = t.match(/(\d+):(\d+)\s*(AM|PM|am|pm)?/);
+        if (!m) return 0;
+        let h = parseInt(m[1], 10);
+        if (m[3] && m[3].toLowerCase() === 'pm' && h !== 12) h += 12;
+        if (m[3] && m[3].toLowerCase() === 'am' && h === 12) h = 0;
+        return h + parseInt(m[2], 10) / 60;
+      };
+
+      const newStart = parseTime(time);
+      const newEnd = timeEnd ? parseTime(timeEnd) : newStart + 1;
+
+      let conflict = null;
+      for (const ec of existingClasses) {
+        if (!ec.time) continue;
+        const ecStart = parseTime(ec.time);
+        const ecEnd = ecStart + 1.5; // Assume 1.5 hr if end time missing
+
+        // Check overlap
+        if ((newStart >= ecStart && newStart < ecEnd) || (newEnd > ecStart && newEnd <= ecEnd)) {
+          conflict = ec;
+          break;
+        }
+      }
+
+      if (conflict) {
+        setLoading(false);
+        Alert.alert(
+          'Schedule Conflict Detected! ⚠️',
+          `This class overlaps with your existing "${conflict.subject}" class at ${conflict.time}. Are you sure you want to add it?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Anyway', onPress: () => performAdd(days, user?.id) }
+          ]
+        );
+        return;
+      }
+    }
+    
+    await performAdd(days, user?.id);
+  };
+
+  const performAdd = async (days: (number | null)[], userId: string | undefined) => {
     const inserts = days.map((day) => ({
       subject: subject.trim(),
       location: location.trim() || 'TBA',
@@ -68,7 +120,7 @@ export default function NewClassScreen() {
       time: time.trim(),
       time_end: timeEnd.trim() || '',
       day,
-      user_id: user?.id,
+      user_id: userId,
     }));
 
     const { error } = await supabase.from('classes').insert(inserts);

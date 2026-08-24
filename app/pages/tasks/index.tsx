@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '../../../utils/supabase';
 import { colors } from '../../styles/dashboard.styles';
+import PomodoroTimer from '../../../components/PomodoroTimer';
+import { addXP } from '../../../utils/gamification';
 
 const PRIORITY_COLOR: Record<string, string> = {
     high: colors.marigold,
@@ -29,6 +31,13 @@ export default function AllTasksScreen() {
     const toggleTask = async (id: string, currentStatus: boolean) => {
         setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !currentStatus } : t)));
         await supabase.from('tasks').update({ done: !currentStatus }).eq('id', id);
+
+        if (!currentStatus) { // meaning it's being marked as done
+            const { xp, leveledUp } = await addXP(10);
+            if (!leveledUp) {
+                // optional small toast or feedback for XP
+            }
+        }
     };
 
     const confirmDeleteTask = (id: string, title: string) => {
@@ -86,13 +95,14 @@ export default function AllTasksScreen() {
                 ))}
             </ScrollView>
             
-            {/* Floating Action Button to add a new task from the Tasks page */}
             <Pressable
                 style={{ position: 'absolute', bottom: insets.bottom + 20, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.marigold, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 }}
                 onPress={() => router.push('/pages/tasks/new' as any)}
             >
                 <Ionicons name="add" size={30} color={colors.paper} />
             </Pressable>
+
+            <PomodoroTimer />
         </View>
     );
 }

@@ -13,6 +13,8 @@ const KEY_LAST_STUDIED  = 'gam_last_studied_date'; // YYYY-MM-DD
 const KEY_BADGES        = 'gam_earned_badges';
 const KEY_TOTAL_CARDS   = 'gam_total_cards_learned';
 const KEY_TOTAL_SESSIONS= 'gam_total_sessions';
+const KEY_XP            = 'gam_xp';
+const KEY_LEVEL         = 'gam_level';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type BadgeId =
@@ -110,11 +112,13 @@ export async function incrementSessions(): Promise<number> {
   return total;
 }
 
-export async function getStats(): Promise<{ streak: number; totalCards: number; totalSessions: number }> {
-  const [streakStr, cardsStr, sessionsStr] = await Promise.all([
+export async function getStats(): Promise<{ streak: number; totalCards: number; totalSessions: number; xp: number; level: number }> {
+  const [streakStr, cardsStr, sessionsStr, xpStr, levelStr] = await Promise.all([
     AsyncStorage.getItem(KEY_STREAK),
     AsyncStorage.getItem(KEY_TOTAL_CARDS),
     AsyncStorage.getItem(KEY_TOTAL_SESSIONS),
+    AsyncStorage.getItem(KEY_XP),
+    AsyncStorage.getItem(KEY_LEVEL),
   ]);
   const lastStudied = await AsyncStorage.getItem(KEY_LAST_STUDIED);
   const rawStreak = parseInt(streakStr || '0', 10);
@@ -123,7 +127,39 @@ export async function getStats(): Promise<{ streak: number; totalCards: number; 
     streak,
     totalCards:    parseInt(cardsStr    || '0', 10),
     totalSessions: parseInt(sessionsStr || '0', 10),
+    xp:            parseInt(xpStr       || '0', 10),
+    level:         parseInt(levelStr    || '1', 10),
   };
+}
+
+export async function addXP(points: number): Promise<{ xp: number; level: number; leveledUp: boolean }> {
+  const stats = await getStats();
+  let newXp = stats.xp + points;
+  let newLevel = stats.level;
+  let leveledUp = false;
+
+  const xpNeeded = newLevel * 100; // e.g. 100 XP to reach level 2, 200 for level 3
+  if (newXp >= xpNeeded) {
+    newLevel += 1;
+    newXp -= xpNeeded; // carry over remaining XP
+    leveledUp = true;
+    
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `Level Up! 🎉`,
+        body: `You are now Level ${newLevel}!`,
+        sound: true,
+      },
+      trigger: null,
+    });
+  }
+
+  await AsyncStorage.multiSet([
+    [KEY_XP, newXp.toString()],
+    [KEY_LEVEL, newLevel.toString()],
+  ]);
+
+  return { xp: newXp, level: newLevel, leveledUp };
 }
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
