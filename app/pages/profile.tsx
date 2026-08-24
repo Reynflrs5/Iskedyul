@@ -95,6 +95,8 @@ export default function ProfileScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
       >
         {/* --- HERO: avatar, name, stats --- */}
         <Animated.View

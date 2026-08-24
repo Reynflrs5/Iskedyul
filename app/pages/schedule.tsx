@@ -231,13 +231,8 @@ export default function ScheduleScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* --- HERO: title, add button, day-tab strip --- */}
-        <Animated.View
+      {/* --- HERO: title, add button, day-tab strip --- */}
+      <Animated.View
           style={[
             styles.hero,
             {
@@ -294,10 +289,18 @@ export default function ScheduleScreen() {
           </View>
         </Animated.View>
 
+      <ScrollView
+        style={{ flex: 1, marginTop: -40, zIndex: 10, elevation: 10 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+      >
         {/* --- CONTENT SHEET: classes for the selected day --- */}
         <Animated.View
           style={[
             styles.contentSheet,
+            { marginTop: 0 },
             {
               opacity: sheetAnim,
               transform: [{ translateY: sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],

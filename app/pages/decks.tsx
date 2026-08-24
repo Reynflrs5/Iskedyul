@@ -79,6 +79,8 @@ export default function DecksScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
       >
         {/* --- HERO: title, add button, summary chips --- */}
         <Animated.View

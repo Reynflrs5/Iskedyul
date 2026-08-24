@@ -11,6 +11,7 @@ import {
     Alert,
     Platform,
     Modal,
+    RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +20,7 @@ import { styles, colors, dashGamStyles } from '../styles/dashboard.styles';
 import { WEEK_DAYS } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
-import { getStats, getEarnedBadges, ALL_BADGES } from '../../utils/gamification';
+import { getStats, getEarnedBadges, ALL_BADGES, addXP } from '../../utils/gamification';
 import { 
     registerForPushNotificationsAsync, 
     clearAllNotifications, 
@@ -107,6 +108,7 @@ export default function DashboardScreen() {
     const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
     const [totalCardsLearned, setTotalCardsLearned] = useState(0);
     const [showStatsModal, setShowStatsModal] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
 
     const tasksDueToday = tasks.filter((t) => !t.done).length;
     const tasksDone = tasks.filter((t) => t.done).length;
@@ -114,79 +116,76 @@ export default function DashboardScreen() {
     const tasksCompletionPct = totalTasks > 0 ? Math.round((tasksDone / totalTasks) * 100) : 0;
 
     // Fetch data from Supabase when the dashboard loads or comes into focus
+    const fetchDashboardData = useCallback(async () => {
+        // 1. Get current logged-in user
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            setUserName(user.user_metadata?.full_name || '');
+        }
+
+        // 2. Fetch Tasks from Supabase
+        const { data: tasksData } = await supabase
+            .from('tasks')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (tasksData) setTasks(tasksData);
+
+        // 3. Fetch Classes from Supabase
+        const { data: classesData } = await supabase
+            .from('classes')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (classesData) {
+            setClasses(classesData);
+            const todayIdx = (new Date().getDay() + 6) % 7;
+            const todayCount = classesData.filter(
+                (c: any) => c.day === todayIdx || c.day === null || c.day === undefined
+            ).length;
+            setClassesToday(todayCount);
+        }
+
+        // 4. Load gamification stats
+        const stats = await getStats();
+        setStreak(stats.streak);
+        setLevel(stats.level);
+        setXp(stats.xp);
+        setTotalCardsLearned(stats.totalCards);
+        const badges = await getEarnedBadges();
+        setEarnedBadges(badges);
+
+        // 5. Schedule Notifications
+        await registerForPushNotificationsAsync();
+        await clearAllNotifications();
+
+        const todayIdx = (new Date().getDay() + 6) % 7;
+        if (classesData) {
+            const todaysClasses = classesData.filter(
+                (c: any) => c.day === todayIdx || c.day === null || c.day === undefined
+            );
+            todaysClasses.forEach((c: any) => {
+                if (c.time) scheduleClassNotification(c.subject, c.location, c.time, todayIdx);
+            });
+        }
+        if (tasksData) {
+            tasksData.forEach((t: any) => {
+                if (!t.done && t.due) scheduleTaskNotification(t.title, t.due);
+            });
+        }
+    }, []);
+
     useFocusEffect(
         useCallback(() => {
-            async function fetchDashboardData() {
-                // 1. Get current logged-in user
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    // The full name was saved in user metadata during signup
-                    setUserName(user.user_metadata?.full_name || '');
-                }
-
-                // 2. Fetch Tasks from Supabase
-                const { data: tasksData } = await supabase
-                    .from('tasks')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (tasksData) setTasks(tasksData);
-
-                // 3. Fetch Classes from Supabase
-                const { data: classesData } = await supabase
-                    .from('classes')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (classesData) {
-                    setClasses(classesData);
-                    // Count classes that match today's day index (0=Mon…6=Sun)
-                    const todayIdx = (new Date().getDay() + 6) % 7;
-                    const todayCount = classesData.filter(
-                        (c: any) => c.day === todayIdx || c.day === null || c.day === undefined
-                    ).length;
-                    setClassesToday(todayCount);
-                }
-
-                // 4. Load gamification stats
-                const stats = await getStats();
-                setStreak(stats.streak);
-                setLevel(stats.level);
-                setXp(stats.xp);
-                setTotalCardsLearned(stats.totalCards);
-                const badges = await getEarnedBadges();
-                setEarnedBadges(badges);
-
-                // 5. Schedule Notifications
-                await registerForPushNotificationsAsync();
-                await clearAllNotifications();
-
-                // Schedule today's classes
-                const todayIdx = (new Date().getDay() + 6) % 7;
-                if (classesData) {
-                    const todaysClasses = classesData.filter(
-                        (c: any) => c.day === todayIdx || c.day === null || c.day === undefined
-                    );
-                    todaysClasses.forEach((c: any) => {
-                        if (c.time) {
-                            scheduleClassNotification(c.subject, c.location, c.time, todayIdx);
-                        }
-                    });
-                }
-
-                // Schedule upcoming tasks
-                if (tasksData) {
-                    tasksData.forEach((t: any) => {
-                        if (!t.done && t.due) {
-                            scheduleTaskNotification(t.title, t.due);
-                        }
-                    });
-                }
-            }
-
             fetchDashboardData();
-        }, [])
+        }, [fetchDashboardData])
     );
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await fetchDashboardData();
+        setRefreshing(false);
+    }, [fetchDashboardData]);
 
     const refreshTasks = async () => {
         const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
@@ -195,14 +194,21 @@ export default function DashboardScreen() {
 
     // Update task in state AND in Supabase Database
     const toggleTask = async (id: string, currentStatus: boolean) => {
+        if (currentStatus) return; // Prevent unchecking
+
         // Optimistic UI update (feels instant to the user)
-        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !currentStatus } : t)));
+        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: true } : t)));
 
         // Send update to database in background
         await supabase
             .from('tasks')
-            .update({ done: !currentStatus })
+            .update({ done: true })
             .eq('id', id);
+        
+        // Add XP
+        const { xp: newXp, level: newLevel } = await addXP(10);
+        setXp(newXp);
+        setLevel(newLevel);
     };
 
     const confirmDeleteTask = (id: string, title: string) => {
@@ -274,13 +280,8 @@ export default function DashboardScreen() {
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
 
-            <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* --- HERO: elevated dark panel, greeting + week + quick stats --- */}
-                <Animated.View
+            {/* --- HERO: elevated dark panel, greeting + week + quick stats --- */}
+            <Animated.View
                     style={[
                         styles.hero,
                         {
@@ -344,16 +345,7 @@ export default function DashboardScreen() {
                                 <Pressable
                                     style={styles.heroIconButton}
                                     hitSlop={8}
-                                    onPress={() => {
-                                        const pendingCount = tasks.filter((t) => !t.done).length;
-                                        Alert.alert(
-                                            '🔔 Notifications',
-                                            pendingCount > 0
-                                                ? `You have ${pendingCount} pending task${pendingCount > 1 ? 's' : ''}.`
-                                                : 'No pending notifications.',
-                                            [{ text: 'OK' }]
-                                        );
-                                    }}
+                                    onPress={() => router.push('/pages/notifications' as any)}
                                 >
                                     <Ionicons name="notifications-outline" size={18} color={colors.paper} />
                                     {tasksDueToday > 0 && <View style={styles.heroNotifDot} />}
@@ -435,10 +427,18 @@ export default function DashboardScreen() {
                     </View>
                 </Animated.View>
 
+            <ScrollView
+                style={{ flex: 1, marginTop: -40, zIndex: 10, elevation: 10 }}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                overScrollMode="never"
+            >
                 {/* --- CONTENT SHEET: floats up over the hero --- */}
                 <Animated.View
                     style={[
                         styles.contentSheet,
+                        { marginTop: 0 },
                         {
                             opacity: sheetAnim,
                             transform: [

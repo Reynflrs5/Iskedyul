@@ -29,14 +29,14 @@ export default function AllTasksScreen() {
     );
 
     const toggleTask = async (id: string, currentStatus: boolean) => {
-        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !currentStatus } : t)));
-        await supabase.from('tasks').update({ done: !currentStatus }).eq('id', id);
+        if (currentStatus) return; // Prevent unchecking once done
 
-        if (!currentStatus) { // meaning it's being marked as done
-            const { xp, leveledUp } = await addXP(10);
-            if (!leveledUp) {
-                // optional small toast or feedback for XP
-            }
+        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: true } : t)));
+        await supabase.from('tasks').update({ done: true }).eq('id', id);
+
+        const { xp, leveledUp } = await addXP(10);
+        if (!leveledUp) {
+            // optional small toast or feedback for XP
         }
     };
 
@@ -63,7 +63,7 @@ export default function AllTasksScreen() {
                 </Pressable>
                 <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink, marginLeft: 16 }}>All Tasks</Text>
             </View>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 100 }}>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 100 }} bounces={false} overScrollMode="never">
                 {tasks.map((t) => (
                     <Pressable
                         key={t.id}
