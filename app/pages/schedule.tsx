@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import {
   View, Text, Pressable, ScrollView, StatusBar,
   Animated, Easing, useWindowDimensions, Alert,
-  Modal,
+  Modal, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +29,22 @@ function getSubjectColor(subject: string) {
     hash = subject.charCodeAt(i) + ((hash << 5) - hash);
   }
   return ACCENT_COLORS[Math.abs(hash) % ACCENT_COLORS.length];
+}
+
+// Lightweight keyword → icon mapping so class blocks and the details
+// modal feel a bit more alive than a plain color chip.
+function getSubjectIcon(subject: string): keyof typeof Ionicons.glyphMap {
+  const s = (subject || '').toLowerCase();
+  if (/(math|calc|algebra|stat)/.test(s)) return 'calculator-outline';
+  if (/(bio|chem|physi|lab|science)/.test(s)) return 'flask-outline';
+  if (/(art|design|draw)/.test(s)) return 'color-palette-outline';
+  if (/(music|choir|band)/.test(s)) return 'musical-notes-outline';
+  if (/(hist|social|geo|econ|poli)/.test(s)) return 'earth-outline';
+  if (/(eng|lit|writ|read)/.test(s)) return 'book-outline';
+  if (/(comp|code|program|cs|software)/.test(s)) return 'code-slash-outline';
+  if (/(pe|gym|sport|fitness|health)/.test(s)) return 'basketball-outline';
+  if (/(lang|spanish|french|japanese|chinese)/.test(s)) return 'language-outline';
+  return 'school-outline';
 }
 
 // Grid layout constants
@@ -62,7 +78,8 @@ export default function ScheduleScreen() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [decks, setDecks] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
-  
+  const [refreshing, setRefreshing] = useState(false);
+
   // Modal state
   const [selectedClassDetails, setSelectedClassDetails] = useState<any>(null);
 
@@ -74,6 +91,19 @@ export default function ScheduleScreen() {
 
   const heroAnim = useRef(new Animated.Value(0)).current;
   const sheetAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Gentle breathing pulse for the "live" dot — purely decorative, loops forever.
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.35, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim]);
 
   const refreshClasses = async () => {
     const { data } = await supabase.from('classes').select('*').order('time', { ascending: true });
@@ -85,6 +115,12 @@ export default function ScheduleScreen() {
     const { data: decksData } = await supabase.from('decks').select('*').order('created_at', { ascending: false });
     if (decksData) setDecks(decksData);
   };
+
+  const onPullToRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshClasses();
+    setRefreshing(false);
+  }, []);
 
   // Re-fetch and re-play the entrance animation every time this tab regains
   // focus — so classes added from the "+" screen show up without a manual
@@ -246,22 +282,36 @@ export default function ScheduleScreen() {
           <View
             style={[
               styles.heroAccentRing,
-              { width: width * 0.85, height: width * 0.85, top: -width * 0.55, left: -width * 0.35 },
+              { width: width * 0.9, height: width * 0.9, top: -width * 0.6, left: -width * 0.4 },
+            ]}
+          />
+          <View
+            style={[
+              styles.heroAccentRingSmall,
+              { width: width * 0.5, height: width * 0.5, top: -width * 0.1, right: -width * 0.28, left: undefined },
             ]}
           />
 
           <View style={{ width: '100%', maxWidth: maxContentWidth, alignSelf: 'center' }}>
             <View style={styles.heroTopRow}>
               <View>
-                <Text style={styles.heroEyebrow}>{getMonthLabel()}</Text>
+                <Text style={styles.heroEyebrow}>{getMonthLabel().toUpperCase()}</Text>
                 <Text style={styles.pageTitle}>Schedule</Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <Pressable style={[styles.addButton, { backgroundColor: colors.paperRaised }]} onPress={handleRescan}>
-                  <Ionicons name="scan" size={20} color={colors.ink} />
+              <View style={styles.headerActions}>
+                <Pressable
+                  style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
+                  onPress={handleRescan}
+                  hitSlop={6}
+                >
+                  <Ionicons name="scan-outline" size={19} color={colors.paper} />
                 </Pressable>
-                <Pressable style={styles.addButton} onPress={() => router.push('/pages/classes/new')}>
-                  <Ionicons name="add" size={20} color={colors.marigoldInk} />
+                <Pressable
+                  style={({ pressed }) => [styles.addButton, styles.addButtonPrimary, pressed && styles.addButtonPressed]}
+                  onPress={() => router.push('/pages/classes/new')}
+                  hitSlop={6}
+                >
+                  <Ionicons name="add" size={22} color={colors.marigoldInk} />
                 </Pressable>
               </View>
             </View>
@@ -276,7 +326,11 @@ export default function ScheduleScreen() {
                 return (
                   <Pressable
                     key={day}
-                    style={[styles.dayTab, isActive && styles.dayTabActive]}
+                    style={({ pressed }) => [
+                      styles.dayTab,
+                      isActive && styles.dayTabActive,
+                      pressed && !isActive && styles.dayTabPressed,
+                    ]}
                     onPress={() => setSelectedDay(i)}
                   >
                     {isToday && !isActive && <View style={styles.dayTabTodayDot} />}
@@ -290,11 +344,20 @@ export default function ScheduleScreen() {
         </Animated.View>
 
       <ScrollView
-        style={{ marginTop: -40, zIndex: 10, elevation: 10 }}
-        contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
+        style={{ flex: 1, marginTop: -40 }}
+        contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
+        bounces={true}
+        overScrollMode="always"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onPullToRefresh}
+            tintColor={colors.periwinkle}
+            colors={[colors.periwinkle]}
+            progressViewOffset={60}
+          />
+        }
       >
         {/* --- CONTENT SHEET: classes for the selected day --- */}
         <Animated.View
@@ -310,6 +373,8 @@ export default function ScheduleScreen() {
           ]}
         >
           <View style={{ width: '100%', maxWidth: maxContentWidth, alignSelf: 'center' }}>
+            <View style={styles.sheetGrabber} />
+
             <View style={styles.sheetHeaderRow}>
               <Text style={styles.sheetHeaderTitle}>
                 {selectedDay === todayIndex ? "Today's Classes" : `${DAYS[selectedDay]}'s Classes`}
@@ -334,7 +399,15 @@ export default function ScheduleScreen() {
                 return (
                   <View style={[styles.liveBanner, { backgroundColor: isHappeningNow ? colors.marigoldSoft : colors.periwinkleSoft }]}>
                     <View style={styles.liveBannerPulse}>
-                      <View style={[styles.liveBannerDot, { backgroundColor: isHappeningNow ? colors.marigold : colors.periwinkle }]} />
+                      <Animated.View
+                        style={[
+                          styles.liveBannerDot,
+                          {
+                            backgroundColor: isHappeningNow ? colors.marigold : colors.periwinkle,
+                            transform: [{ scale: isHappeningNow ? pulseAnim : 1 }],
+                          },
+                        ]}
+                      />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.liveBannerTitle, { color: isHappeningNow ? colors.marigoldInk : colors.ink }]}>
@@ -357,8 +430,17 @@ export default function ScheduleScreen() {
 
             {dayClasses.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Ionicons name="calendar-outline" size={32} color={colors.inkFaint} />
+                <View style={styles.emptyIconWrap}>
+                  <Ionicons name="calendar-outline" size={26} color={colors.inkFaint} />
+                </View>
                 <Text style={styles.emptyText}>No classes on this day</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.85 }]}
+                  onPress={() => router.push('/pages/classes/new')}
+                >
+                  <Ionicons name="add" size={15} color={colors.paper} />
+                  <Text style={styles.emptyCtaText}>Add a class</Text>
+                </Pressable>
               </View>
             ) : (
               <View style={styles.gridContainer}>
@@ -398,7 +480,7 @@ export default function ScheduleScreen() {
                           <View
                             style={[
                               styles.gridLine,
-                              { 
+                              {
                                 top: (h - START_HOUR + 0.5) * HOUR_HEIGHT,
                                 backgroundColor: 'transparent',
                                 borderTopWidth: 1,
@@ -429,37 +511,46 @@ export default function ScheduleScreen() {
                     {/* Class Blocks */}
                     {layoutClasses.map((c, i) => {
                       const top = (c.start - START_HOUR) * HOUR_HEIGHT;
-                      const height = Math.max((c.end - c.start) * HOUR_HEIGHT, 40); // Minimum height
+                      const height = Math.max((c.end - c.start) * HOUR_HEIGHT, 44); // Minimum height
 
                       const blockWidth = `${100 / c.numCols}%`;
                       const blockLeft = `${(c.colIndex * 100) / c.numCols}%`;
+                      const accentColor = getSubjectColor(c.subject);
+                      const isCompact = height < 64;
 
                       return (
                         <Pressable
                           key={c.id}
-                          style={[
+                          style={({ pressed }) => [
                             styles.classBlock,
                             {
                               top,
                               height,
                               width: blockWidth as any,
                               left: blockLeft as any,
-                              backgroundColor: getSubjectColor(c.subject),
+                              backgroundColor: accentColor,
                               marginLeft: c.colIndex === 0 ? 8 : 2, // Slight padding depending on column
                               marginRight: c.colIndex === c.numCols - 1 ? 8 : 2,
                             },
+                            pressed && styles.classBlockPressed,
                           ]}
                           onPress={() => setSelectedClassDetails(c)}
                           onLongPress={() => confirmDeleteClass(c.id, c.subject)}
                           delayLongPress={400}
                         >
-                          <Text style={styles.classBlockSubject} numberOfLines={1}>
-                            {c.subject}
-                          </Text>
-                          <Text style={styles.classBlockLocation} numberOfLines={1}>
-                            {c.location}
-                          </Text>
-                          {c.professor ? (
+                          <View style={[styles.classBlockAccent, { backgroundColor: 'rgba(19,42,76,0.18)' }]} />
+                          <View style={styles.classBlockHeaderRow}>
+                            <Ionicons name={getSubjectIcon(c.subject)} size={13} color="rgba(19,42,76,0.75)" />
+                            <Text style={styles.classBlockSubject} numberOfLines={1}>
+                              {c.subject}
+                            </Text>
+                          </View>
+                          {!isCompact && c.location ? (
+                            <Text style={styles.classBlockLocation} numberOfLines={1}>
+                              {c.location}
+                            </Text>
+                          ) : null}
+                          {!isCompact && c.professor ? (
                             <Text style={styles.classBlockLocation} numberOfLines={1}>
                               {c.professor}
                             </Text>
@@ -490,28 +581,36 @@ export default function ScheduleScreen() {
           <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
             {selectedClassDetails && (
               <>
+                <View style={styles.modalGrabber} />
+
                 <View style={styles.modalHeader}>
-                  <View style={[styles.modalColorStrip, { backgroundColor: getSubjectColor(selectedClassDetails.subject) }]} />
+                  <View style={[styles.modalIconBadge, { backgroundColor: getSubjectColor(selectedClassDetails.subject) }]}>
+                    <Ionicons name={getSubjectIcon(selectedClassDetails.subject)} size={22} color="#132A4C" />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.modalSubject}>{selectedClassDetails.subject}</Text>
                     <Text style={styles.modalTime}>
                       {DAYS[selectedDay]} • {selectedClassDetails.time} {selectedClassDetails.time_end ? `- ${selectedClassDetails.time_end}` : ''}
                     </Text>
                   </View>
-                  <Pressable style={styles.modalCloseBtn} onPress={() => setSelectedClassDetails(null)}>
-                    <Ionicons name="close" size={24} color={colors.inkSoft} />
+                  <Pressable style={styles.modalCloseBtn} onPress={() => setSelectedClassDetails(null)} hitSlop={6}>
+                    <Ionicons name="close" size={19} color={colors.inkSoft} />
                   </Pressable>
                 </View>
 
                 <View style={styles.modalBody}>
                   <View style={styles.modalDetailRow}>
-                    <Ionicons name="location" size={20} color={colors.marigold} />
+                    <View style={styles.modalDetailIconWrap}>
+                      <Ionicons name="location" size={16} color={colors.marigoldInk} />
+                    </View>
                     <Text style={styles.modalDetailText}>
                       {selectedClassDetails.location || "No location specified"}
                     </Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Ionicons name="person" size={20} color={colors.marigold} />
+                    <View style={styles.modalDetailIconWrap}>
+                      <Ionicons name="person" size={16} color={colors.marigoldInk} />
+                    </View>
                     <Text style={styles.modalDetailText}>
                       {selectedClassDetails.professor || "No professor specified"}
                     </Text>
@@ -523,10 +622,10 @@ export default function ScheduleScreen() {
                   const subjectTasks = tasks.filter(t => !t.done && t.title.toLowerCase().includes(selectedClassDetails.subject.toLowerCase()));
                   if (subjectTasks.length > 0) {
                     return (
-                      <View style={{ marginTop: spacing.md, paddingHorizontal: spacing.sm }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, marginBottom: spacing.sm }}>Upcoming Tasks</Text>
+                      <View style={{ marginBottom: spacing.lg }}>
+                        <Text style={styles.modalSectionTitle}>Upcoming Tasks</Text>
                         {subjectTasks.slice(0, 3).map(t => (
-                          <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, backgroundColor: colors.paper, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+                          <View key={t.id} style={styles.modalListRow}>
                             <Ionicons name="ellipse" size={10} color={t.priority === 'high' ? colors.marigold : t.priority === 'medium' ? colors.periwinkle : colors.sage} />
                             <Text style={{ fontSize: 14, color: colors.ink, flex: 1 }} numberOfLines={1}>{t.title}</Text>
                             <Text style={{ fontSize: 12, color: colors.inkFaint }}>{t.due}</Text>
@@ -543,20 +642,21 @@ export default function ScheduleScreen() {
                   const subjectDecks = decks.filter(d => d.title.toLowerCase().includes(selectedClassDetails.subject.toLowerCase()));
                   if (subjectDecks.length > 0) {
                     return (
-                      <View style={{ marginTop: spacing.md, paddingHorizontal: spacing.sm }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.ink, marginBottom: spacing.sm }}>Related Decks</Text>
+                      <View style={{ marginBottom: spacing.lg }}>
+                        <Text style={styles.modalSectionTitle}>Related Decks</Text>
                         {subjectDecks.slice(0, 2).map(d => (
-                          <Pressable 
-                            key={d.id} 
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, backgroundColor: colors.paper, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                          <Pressable
+                            key={d.id}
+                            style={({ pressed }) => [styles.modalListRow, pressed && { opacity: 0.8 }]}
                             onPress={() => {
                               setSelectedClassDetails(null);
                               router.push(`/pages/decks/${d.id}` as any);
                             }}
                           >
-                            <Ionicons name="layers" size={16} color={colors.marigold} />
+                            <Ionicons name="layers" size={16} color={colors.marigoldInk} />
                             <Text style={{ fontSize: 14, color: colors.ink, flex: 1 }} numberOfLines={1}>{d.title}</Text>
                             <Text style={{ fontSize: 12, color: colors.inkFaint }}>{d.total} terms</Text>
+                            <Ionicons name="chevron-forward" size={14} color={colors.inkFaint} />
                           </Pressable>
                         ))}
                       </View>
@@ -564,11 +664,15 @@ export default function ScheduleScreen() {
                   }
                   return null;
                 })()}
-                
+
                 {/* Action Buttons */}
-                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                   <Pressable
-                    style={[styles.modalActionBtn, { flex: 1, backgroundColor: colors.periwinkle }]}
+                    style={({ pressed }) => [
+                      styles.modalActionBtn,
+                      { flex: 1, backgroundColor: colors.periwinkle },
+                      pressed && styles.modalActionBtnPressed,
+                    ]}
                     onPress={() => {
                       const classData = selectedClassDetails;
                       setSelectedClassDetails(null);
@@ -578,18 +682,22 @@ export default function ScheduleScreen() {
                       });
                     }}
                   >
-                    <Ionicons name="pencil" size={18} color={colors.paper} />
+                    <Ionicons name="pencil" size={17} color={colors.paper} />
                     <Text style={[styles.modalActionText, { color: colors.paper }]}>Edit Class</Text>
                   </Pressable>
 
                   <Pressable
-                    style={[styles.modalActionBtn, { flex: 1, backgroundColor: '#FEE2E2' }]}
+                    style={({ pressed }) => [
+                      styles.modalActionBtn,
+                      { flex: 1, backgroundColor: '#FEE2E2' },
+                      pressed && styles.modalActionBtnPressed,
+                    ]}
                     onPress={() => {
                       setSelectedClassDetails(null);
                       confirmDeleteClass(selectedClassDetails.id, selectedClassDetails.subject);
                     }}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    <Ionicons name="trash-outline" size={17} color="#EF4444" />
                     <Text style={[styles.modalActionText, { color: '#EF4444' }]}>Delete</Text>
                   </Pressable>
                 </View>

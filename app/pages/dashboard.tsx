@@ -428,8 +428,8 @@ export default function DashboardScreen() {
                 </Animated.View>
 
             <ScrollView
-                style={{ marginTop: -40, zIndex: 10, elevation: 10 }}
-                contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
+                style={{ flex: 1, marginTop: -40 }}
+                contentContainerStyle={{ flexGrow: 1 }}
                 showsVerticalScrollIndicator={false}
                 bounces={false}
                 overScrollMode="never"
