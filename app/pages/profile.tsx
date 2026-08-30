@@ -528,6 +528,11 @@ export default function ProfileScreen() {
                 label="GWA Calculator" first
                 onPress={() => router.push('/pages/gwa-calculator' as any)}
               />
+              <MenuItem
+                icon="timer-outline" bg={colors.periwinkleSoft}
+                label="Focus Timer"
+                onPress={() => router.push('/pages/focus-timer' as any)}
+              />
             </View>
 
             {/* Sign Out */}
