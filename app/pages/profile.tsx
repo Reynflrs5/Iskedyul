@@ -533,6 +533,11 @@ export default function ProfileScreen() {
                 label="Focus Timer"
                 onPress={() => router.push('/pages/focus-timer' as any)}
               />
+              <MenuItem
+                icon="walk-outline" bg={colors.marigoldSoft}
+                label="Attendance Tracker"
+                onPress={() => router.push('/pages/attendance-tracker' as any)}
+              />
             </View>
 
             {/* Sign Out */}
