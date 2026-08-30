@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
-import { styles, colors, dashGamStyles } from '../styles/dashboard.styles';
+import { styles, colors, dashGamStyles, spacing } from '../styles/dashboard.styles';
 import { WEEK_DAYS } from '../styles/welcome.styles';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../utils/supabase';
@@ -247,6 +247,24 @@ export default function DashboardScreen() {
             (c) => c.day === todayIndex || c.day === null || c.day === undefined
         );
     }, [classes, todayIndex]);
+
+    // Calculate urgent deadlines (tasks due within 3 days)
+    const urgentTasks = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        return tasks
+            .filter((t) => !t.done && t.due)
+            .map((t) => {
+                const dueDate = new Date(t.due);
+                dueDate.setHours(0, 0, 0, 0);
+                const diffTime = dueDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return { ...t, daysLeft: diffDays };
+            })
+            .filter((t) => t.daysLeft >= 0 && t.daysLeft <= 3)
+            .sort((a, b) => a.daysLeft - b.daysLeft);
+    }, [tasks]);
 
     // Streak milestone progress — drives the little bar on the streak card
     // so "3 day streak" visibly means something instead of a bare number.
@@ -568,7 +586,51 @@ export default function DashboardScreen() {
 
                         {/* Upcoming tasks */}
                         <FadeInSection anim={tasksAnim}>
-                            <View style={[styles.sectionRow, { marginTop: 8 }]}>
+                            {/* --- Urgent Deadlines Widget --- */}
+                            {urgentTasks.length > 0 && (
+                                <View style={{ marginTop: 8, marginBottom: spacing.md }}>
+                                    <View style={styles.sectionRow}>
+                                        <Text style={styles.sectionTitle}>Urgent Deadlines</Text>
+                                    </View>
+                                    {urgentTasks.map((t) => {
+                                        let urgencyText = '';
+                                        let iconName: any = 'alert-circle';
+                                        
+                                        if (t.daysLeft === 0) {
+                                            urgencyText = '🔥 Due Today!';
+                                            iconName = 'flame';
+                                        } else if (t.daysLeft === 1) {
+                                            urgencyText = '⚠️ Due Tomorrow';
+                                            iconName = 'warning';
+                                        } else {
+                                            urgencyText = `⏳ ${t.daysLeft} Days Left`;
+                                            iconName = 'hourglass';
+                                        }
+
+                                        return (
+                                            <Pressable
+                                                key={`urgent-${t.id}`}
+                                                onPress={() => toggleTask(t.id, t.done)}
+                                                style={styles.urgentCard}
+                                                android_ripple={{ color: '#FCA5A5' }}
+                                            >
+                                                <View style={styles.urgentIconWrap}>
+                                                    <Ionicons name={iconName} size={22} color="#DC2626" />
+                                                </View>
+                                                <View style={styles.urgentInfoCol}>
+                                                    <Text style={styles.urgentTitle} numberOfLines={1}>{t.title}</Text>
+                                                    <View style={styles.urgentMetaRow}>
+                                                        <Text style={styles.urgentMetaText}>{urgencyText}</Text>
+                                                    </View>
+                                                </View>
+                                                <Ionicons name="checkmark-circle-outline" size={24} color="#FCA5A5" />
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+                            )}
+
+                            <View style={[styles.sectionRow, { marginTop: urgentTasks.length > 0 ? 0 : 8 }]}>
                                 <Text style={styles.sectionTitle}>Upcoming Tasks</Text>
                                 <Pressable onPress={() => router.push('/pages/tasks' as any)} hitSlop={8}>
                                     <Text style={styles.sectionLink}>See all</Text>

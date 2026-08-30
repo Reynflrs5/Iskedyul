@@ -447,9 +447,10 @@ export default function ScheduleScreen() {
                 <View style={styles.gridInner}>
                   {/* Left Column: Time Labels */}
                   <View style={styles.timeColumn}>
+                    <View style={{ height: 12 }} />
                     {HOURS.map((h) => (
                       <View key={h} style={[styles.timeLabelContainer, { height: HOUR_HEIGHT, position: 'relative' }]}>
-                        {/* Align exactly with the hour grid line (top: 0) */}
+                        {/* Align exactly with the hour grid line */}
                         <Text style={[styles.timeLabel, { position: 'absolute', top: -9 }]}>
                           {h === 12 ? '12:00 PM' : h > 12 ? `${h - 12}:00 PM` : `${h}:00 AM`}
                         </Text>
@@ -461,20 +462,22 @@ export default function ScheduleScreen() {
                         )}
                       </View>
                     ))}
+                    <View style={{ height: 12 }} />
                   </View>
 
                   {/* Right Column: Classes Grid */}
                   <View style={styles.classesColumn}>
-                    {/* Horizontal Grid Lines */}
-                    {HOURS.map((h) => (
-                      <View key={`lines-${h}`}>
-                        {/* Full hour line */}
-                        <View
-                          style={[
-                            styles.gridLine,
-                            { top: (h - START_HOUR) * HOUR_HEIGHT },
-                          ]}
-                        />
+                    <View style={{ marginTop: 12 }}>
+                      {/* Horizontal Grid Lines */}
+                      {HOURS.map((h) => (
+                        <View key={`lines-${h}`}>
+                          {/* Full hour line */}
+                          <View
+                            style={[
+                              styles.gridLine,
+                              { top: (h - START_HOUR) * HOUR_HEIGHT },
+                            ]}
+                          />
                         {/* Half hour dashed line */}
                         {h !== END_HOUR && (
                           <View
@@ -561,6 +564,7 @@ export default function ScheduleScreen() {
                         </Pressable>
                       );
                     })}
+                    </View>
                   </View>
                 </View>
               </View>

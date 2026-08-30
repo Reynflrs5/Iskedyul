@@ -438,6 +438,45 @@ export const styles = StyleSheet.create({
         fontSize: 13,
         color: colors.inkFaint,
     },
+    
+    // --- Urgent Deadlines Widget ---
+    urgentCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFF4F2', // very faint red/orange tint
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: '#FCA5A5',
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.md,
+        marginBottom: spacing.sm,
+        gap: spacing.md,
+        ...shadows.soft,
+    },
+    urgentIconWrap: {
+        width: 40, height: 40,
+        borderRadius: 20,
+        backgroundColor: '#FEE2E2',
+        alignItems: 'center', justifyContent: 'center',
+    },
+    urgentInfoCol: {
+        flex: 1,
+    },
+    urgentTitle: {
+        ...type.label,
+        fontSize: 15,
+        color: '#991B1B', // Dark red
+    },
+    urgentMetaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 2,
+    },
+    urgentMetaText: {
+        ...type.caption,
+        color: '#DC2626',
+        fontWeight: '700',
+    },
 });
 
 // --- Streak & badges card (exported separately so dashboard.tsx keeps a
