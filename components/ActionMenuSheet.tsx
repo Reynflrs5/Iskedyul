@@ -71,6 +71,15 @@ export default function ActionMenuSheet({ visible, onClose }: ActionMenuSheetPro
         onPress={() => handleNav('/pages/decks/new')}
       />
 
+      <ActionOption
+        icon="document-text"
+        color={colors.marigold}
+        bg={colors.marigoldSoft}
+        title="Scan Notes to Deck"
+        subtitle="AI summary & auto-flashcards"
+        onPress={() => handleNav('/pages/decks/scan-notes')}
+      />
+
       <View style={styles.divider} />
       <Text style={styles.sectionTitle}>CLASS SCHEDULE</Text>
 

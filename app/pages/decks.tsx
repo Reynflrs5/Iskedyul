@@ -119,10 +119,13 @@ export default function DecksScreen() {
                   <Text style={{ fontSize: 16 }}>{streak > 0 ? '🔥' : '🏅'}</Text>
                   {streak > 0 && <Text style={{ fontSize: 11, fontWeight: '700', color: colors.marigold, marginLeft: -2 }}>{streak}</Text>}
                 </Pressable>
+                <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/scan-notes' as any)}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.marigoldInk} />
+                </Pressable>
                 <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/import' as any)}>
                   <Ionicons name="download-outline" size={20} color={colors.marigoldInk} />
                 </Pressable>
-                <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/new')}>
+                <Pressable style={styles.addButton} onPress={() => router.push('/pages/decks/new' as any)}>
                   <Ionicons name="add" size={20} color={colors.marigoldInk} />
                 </Pressable>
               </View>
