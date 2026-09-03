@@ -8,8 +8,6 @@ import { colors, radius, spacing, type, shadows } from '../../styles/welcome.sty
 import * as Notifications from 'expo-notifications';
 
 export default function AdminDashboard() {
-  const insets = useSafeAreaInsets();
-  
   const [totalDecks, setTotalDecks] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
   const [totalClasses, setTotalClasses] = useState(0);
@@ -70,21 +68,8 @@ export default function AdminDashboard() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.paper} />
-      
-      <View style={styles.header}>
-        <View style={styles.headerTitleRow}>
-          <Ionicons name="shield-checkmark" size={24} color={colors.marigold} />
-          <View>
-            <Text style={styles.headerTitle}>Admin Portal</Text>
-            <Text style={styles.headerSub}>Iskedyul Management</Text>
-          </View>
-        </View>
-        <Pressable onPress={handleLogout} style={styles.logoutBtn}>
-          <Ionicons name="log-out-outline" size={20} color={colors.error} />
-        </Pressable>
-      </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>PLATFORM OVERVIEW</Text>
