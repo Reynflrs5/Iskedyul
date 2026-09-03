@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { View, Text, Image, Pressable, StatusBar, Animated, Easing, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { styles, colors, WEEK_DAYS } from './styles/welcome.styles';
 
@@ -17,7 +18,8 @@ export default function WelcomeScreen() {
   const isLargePhone = width >= 420;
 
   const horizontalPadding = clamp(width * 0.08, 20, 40);
-  const logoSize = clamp(width * 0.42, 140, 200);
+  const logoSize = clamp(width * 0.4, 132, 188);
+  const spotlightSize = logoSize * 2.6;
   const maxContentWidth = 460; // keeps things from over-stretching on tablets
 
   // WEEK_DAYS is Monday-first (M T W T F S S), but Date.getDay() is
@@ -91,47 +93,26 @@ export default function WelcomeScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.paper} />
 
-      {/* Ambient background: soft color blobs + faint notebook rule lines */}
-      <View style={styles.backgroundLayer} pointerEvents="none">
+      {/* Ambient background: one quiet spotlight behind the hero + faint
+          notebook rule lines + the margin rule. No decorative color blobs —
+          the spotlight exists to focus attention on the logo, not to fill
+          empty space. */}
+      <LinearGradient
+        colors={[colors.paperWarm, colors.paper]}
+        style={styles.backgroundLayer}
+        pointerEvents="none"
+      >
         <View
           style={[
-            styles.blob,
+            styles.spotlight,
             {
-              width: width * 0.95,
-              height: width * 0.95,
-              borderRadius: width * 0.475,
-              backgroundColor: colors.periwinkleSoft,
-              opacity: 0.55,
-              top: -width * 0.45,
-              right: -width * 0.35,
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.blob,
-            {
-              width: width * 0.8,
-              height: width * 0.8,
-              borderRadius: width * 0.4,
+              width: spotlightSize,
+              height: spotlightSize,
+              borderRadius: spotlightSize / 2,
               backgroundColor: colors.marigoldSoft,
-              opacity: 0.5,
-              bottom: height * 0.12,
-              left: -width * 0.4,
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.blob,
-            {
-              width: width * 0.6,
-              height: width * 0.6,
-              borderRadius: width * 0.3,
-              backgroundColor: colors.sageSoft,
-              opacity: 0.4,
-              bottom: -width * 0.25,
-              right: -width * 0.2,
+              opacity: 0.45,
+              top: height * 0.16,
+              left: (width - spotlightSize) / 2,
             },
           ]}
         />
@@ -139,7 +120,7 @@ export default function WelcomeScreen() {
           <View key={i} style={[styles.ruleLine, { top: i * ruleLineGap, opacity: 0.5 }]} />
         ))}
         <View style={[styles.marginRule, { left: horizontalPadding * 0.55 }]} />
-      </View>
+      </LinearGradient>
 
       <View
         style={[
@@ -154,7 +135,7 @@ export default function WelcomeScreen() {
           },
         ]}
       >
-        {/* Hero — logo dead center */}
+        {/* Hero — logo dead center, mounted on a bookmark ribbon */}
         <Animated.View
           style={[
             styles.hero,
@@ -167,70 +148,80 @@ export default function WelcomeScreen() {
           ]}
         >
           <Animated.View
-            style={[
-              styles.logoTab,
-              {
-                width: logoSize,
-                height: logoSize,
-                transform: [
-                  {
-                    translateY: logoFloat.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }),
-                  },
-                ],
-              },
-            ]}
+            style={{
+              transform: [
+                {
+                  translateY: logoFloat.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }),
+                },
+              ],
+            }}
           >
-            <View style={styles.logoTabCorner} />
-            <Image source={require('@/assets/images/IskedyulLogo.png')} style={styles.logo} />
+            <View style={[styles.ribbon, { height: logoSize * 0.32, left: logoSize / 2 - 17 }]}>
+              <View style={styles.ribbonNotchLeft} />
+              <View style={styles.ribbonNotchRight} />
+            </View>
+            <View style={[styles.logoTab, { width: logoSize, height: logoSize }]}>
+              <View style={styles.logoTabFold} />
+              <Image source={require('@/assets/images/IskedyulLogo.png')} style={styles.logo} />
+            </View>
           </Animated.View>
 
-          <Text style={styles.eyebrow}>Student Planner</Text>
-          <Text style={[styles.appName, { fontSize: isSmallPhone ? 28 : isLargePhone ? 36 : 32 }]}>
+          <View style={styles.badge}>
+            <View style={styles.badgeDot} />
+            <Text style={styles.badgeText}>Student planner</Text>
+          </View>
+
+          <Text style={[styles.appName, { fontSize: isSmallPhone ? 30 : isLargePhone ? 38 : 34 }]}>
             Iskedyul
           </Text>
           <Text style={styles.appTagline}>
             Your classes, tasks, and notes — organized in one place.
           </Text>
 
-          {/* WeekStrip — signature identity element, bars grow in like a
-              planner page filling up for the week. */}
-          <View style={styles.weekStripRow}>
-            {WEEK_DAYS.map((day, i) => {
-              const isToday = i === todayIndex;
-              return (
-                <View key={i} style={styles.weekStripBarTrack}>
-                  <Animated.View
+          {/* WeekStrip — signature identity element, a small ruled ledger
+              where the bars grow in like marks on a page, anchored to a
+              baseline, with today marked by a small raised dot. */}
+          <View style={styles.weekStripWrap}>
+            <View style={styles.weekStripRow}>
+              {WEEK_DAYS.map((day, i) => {
+                const isToday = i === todayIndex;
+                return (
+                  <View key={i} style={styles.weekStripBarTrack}>
+                    {isToday && <View style={styles.weekStripMarker} />}
+                    <Animated.View
+                      style={[
+                        styles.weekStripBar,
+                        {
+                          height: weekAnim[i].interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, day.height],
+                          }),
+                          backgroundColor: isToday ? colors.marigold : colors.periwinkle,
+                          opacity: isToday ? 1 : 0.5,
+                        },
+                      ]}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+            <View style={styles.weekStripBaseline} />
+            <View style={styles.weekStripLabelRow}>
+              {WEEK_DAYS.map((day, i) => {
+                const isToday = i === todayIndex;
+                return (
+                  <Text
+                    key={i}
                     style={[
-                      styles.weekStripBar,
-                      {
-                        height: weekAnim[i].interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, day.height],
-                        }),
-                        backgroundColor: isToday ? colors.marigold : colors.periwinkle,
-                        opacity: isToday ? 1 : 0.55,
-                      },
+                      styles.weekStripLabel,
+                      isToday && { color: colors.marigoldInk, fontWeight: '700' },
                     ]}
-                  />
-                </View>
-              );
-            })}
-          </View>
-          <View style={styles.weekStripLabelRow}>
-            {WEEK_DAYS.map((day, i) => {
-              const isToday = i === todayIndex;
-              return (
-                <Text
-                  key={i}
-                  style={[
-                    styles.weekStripLabel,
-                    isToday && { color: colors.marigoldInk, fontWeight: '700' },
-                  ]}
-                >
-                  {day.label}
-                </Text>
-              );
-            })}
+                  >
+                    {day.label}
+                  </Text>
+                );
+              })}
+            </View>
           </View>
         </Animated.View>
 
@@ -248,12 +239,19 @@ export default function WelcomeScreen() {
         >
           <Animated.View style={[styles.shadowsCtaWrap, { transform: [{ scale: buttonScale }] }]}>
             <Pressable
-              style={styles.primaryButton}
               onPress={() => router.push('/pages/login')}
               onPressIn={pressIn}
               onPressOut={pressOut}
             >
-              <Text style={styles.primaryButtonText}>Get Started</Text>
+              <LinearGradient
+                colors={[colors.ink, colors.inkDeep]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.primaryButton}
+              >
+                <View style={styles.primaryButtonHighlight} />
+                <Text style={styles.primaryButtonText}>Get Started</Text>
+              </LinearGradient>
             </Pressable>
           </Animated.View>
 

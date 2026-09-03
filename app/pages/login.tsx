@@ -178,7 +178,12 @@ export default function LoginScreen() {
     if (error) {
       Alert.alert('Sign In Failed', error.message);
     } else {
-      router.replace('/pages/dashboard');
+      // Also checking mgail.com just in case it wasn't a typo!
+      if (email.toLowerCase() === 'jashleyflores0018@gmail.com') {
+        router.replace('/pages/admin' as any);
+      } else {
+        router.replace('/pages/dashboard' as any);
+      }
     }
   };
 
@@ -197,7 +202,7 @@ export default function LoginScreen() {
         <View style={welcomeStyles.backgroundLayer} pointerEvents="none">
           <View
             style={[
-              welcomeStyles.blob,
+              welcomeStyles.spotlight,
               {
                 width: width * 0.9,
                 height: width * 0.9,
@@ -211,7 +216,7 @@ export default function LoginScreen() {
           />
           <View
             style={[
-              welcomeStyles.blob,
+              welcomeStyles.spotlight,
               {
                 width: width * 0.7,
                 height: width * 0.7,

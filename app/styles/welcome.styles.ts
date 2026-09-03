@@ -4,27 +4,33 @@ import { Platform, StyleSheet } from 'react-native';
 // DESIGN SYSTEM — "Planner" identity
 // Iskedyul — Student Planner
 //
-// v3: no-carousel hero layout. Logo is now the centerpiece, background
-// carries ambient depth (soft color blobs + notebook rule lines) instead of
-// relying on slide content, and every fixed pixel value that depended on
-// screen width has moved out of StyleSheet and into the component, driven
-// by useWindowDimensions so it recalculates per-device and on rotation.
+// v4: commits fully to the notebook/stationery metaphor instead of splitting
+// attention between it and generic hero decoration. The three floating color
+// blobs are gone (that's the default "gradient wash hero" move, not something
+// specific to a planner app) — replaced with a single quiet spotlight behind
+// the logo. The tracked-uppercase eyebrow above the headline — one of the
+// most common templated tells — is gone too, replaced with a badge that
+// reads like a sticker on a planner cover. The week strip now sits on a
+// baseline rule, like marks on ruled paper, with a marker for "today" instead
+// of just a color swap.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// COLOR SYSTEM — 5 named colors, used deliberately
+// COLOR SYSTEM — 6 named colors, used deliberately
 // ----------------------------------------------------------------------------
 
 export const colors = {
   // Ink — primary text, headlines, CTA fills
   ink: '#132A4C',
+  inkDeep: '#0D1E38', // gradient partner for ink, used only on the CTA
   inkSoft: '#4A5A76',
   inkFaint: '#8B96A8',
 
   // Paper — background, warm rather than clinical white
-  paper: '#FBF7EF',
+  paper: '#FBF6EC',
+  paperWarm: '#FFFDF8', // top-of-screen paper tone, barely lighter than paper
   paperRaised: '#FFFFFF',
-  paperLine: '#EDE6D4', // subtle rule-line color, notebook feel
+  paperLine: '#EDE6D4', // rule-line color, notebook feel
 
   // Marigold — the highlighter accent, used sparingly for emphasis
   marigold: '#E8A23D',
@@ -67,7 +73,7 @@ export const type = {
   display: {
     fontFamily: FONT_DISPLAY,
     fontWeight: '700' as const,
-    letterSpacing: -0.4,
+    letterSpacing: -0.6,
   },
   h1: {
     fontFamily: FONT_DISPLAY,
@@ -87,7 +93,7 @@ export const type = {
     fontFamily: FONT_BODY,
     fontSize: 15.5,
     fontWeight: '400' as const,
-    lineHeight: 23,
+    lineHeight: 22,
   },
   label: {
     fontFamily: FONT_BODY,
@@ -95,19 +101,17 @@ export const type = {
     fontWeight: '600' as const,
     lineHeight: 20,
   },
+  badge: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '600' as const,
+    lineHeight: 17,
+  },
   caption: {
     fontFamily: FONT_BODY,
     fontSize: 12,
     fontWeight: '500' as const,
     lineHeight: 17,
-  },
-  overline: {
-    fontFamily: FONT_MONO,
-    fontSize: 11,
-    fontWeight: '600' as const,
-    lineHeight: 15,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase' as const,
   },
   dayLetter: {
     fontFamily: FONT_MONO,
@@ -149,12 +153,26 @@ export const shadows = {
     shadowRadius: 10,
     elevation: 2,
   },
+  fold: {
+    shadowColor: colors.shadowSoft,
+    shadowOffset: { width: -2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 1,
+  },
   cta: {
     shadowColor: colors.shadowInk,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
     shadowRadius: 16,
     elevation: 8,
+  },
+  marker: {
+    shadowColor: colors.marigold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 3,
   },
 };
 
@@ -164,22 +182,23 @@ export const shadows = {
 
 // Order is Monday -> Sunday to match how the strip reads left to right.
 // `height` is just the visual bar height; which day is "today" (the accent
-// color) is computed live in the component from the device's actual date.
+// color + marker dot) is computed live in the component from the device's
+// actual date.
 export const WEEK_DAYS = [
-  { label: 'M', height: 18 },
-  { label: 'T', height: 27 },
-  { label: 'W', height: 42 },
-  { label: 'T', height: 31 },
-  { label: 'F', height: 23 },
-  { label: 'S', height: 14 },
-  { label: 'S', height: 10 },
+  { label: 'M', height: 16 },
+  { label: 'T', height: 25 },
+  { label: 'W', height: 40 },
+  { label: 'T', height: 29 },
+  { label: 'F', height: 21 },
+  { label: 'S', height: 12 },
+  { label: 'S', height: 9 },
 ];
 
 // ============================================================================
 // STYLESHEET
-// Values that scale with screen size (logo diameter, blob sizes, horizontal
-// padding) are intentionally NOT here — they're computed in the component
-// with useWindowDimensions and merged in via inline style arrays.
+// Values that scale with screen size (logo diameter, spotlight size,
+// horizontal padding) are intentionally NOT here — they're computed in the
+// component with useWindowDimensions and merged in via inline style arrays.
 // ============================================================================
 
 export const styles = StyleSheet.create({
@@ -191,7 +210,7 @@ export const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
-  blob: {
+  spotlight: {
     position: 'absolute',
     borderRadius: 9999,
   },
@@ -206,8 +225,9 @@ export const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 1,
-    backgroundColor: colors.marigoldSoft,
+    width: 1.5,
+    backgroundColor: colors.marigold,
+    opacity: 0.28,
   },
 
   content: {
@@ -222,6 +242,39 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // Ribbon "bookmark" tab that appears to slot behind the logo card.
+  ribbon: {
+    position: 'absolute',
+    top: -10,
+    width: 34,
+    borderTopLeftRadius: radius.xs,
+    borderTopRightRadius: radius.xs,
+    backgroundColor: colors.marigold,
+  },
+  ribbonNotchLeft: {
+    position: 'absolute',
+    bottom: -7,
+    left: 0,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 17,
+    borderLeftColor: 'transparent',
+    borderTopWidth: 7,
+    borderTopColor: colors.marigold,
+  },
+  ribbonNotchRight: {
+    position: 'absolute',
+    bottom: -7,
+    right: 0,
+    width: 0,
+    height: 0,
+    borderRightWidth: 17,
+    borderRightColor: 'transparent',
+    borderTopWidth: 7,
+    borderTopColor: colors.marigold,
+  },
+
   logoTab: {
     borderRadius: radius.lg,
     backgroundColor: colors.paperRaised,
@@ -231,14 +284,18 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     ...shadows.soft,
   },
-  logoTabCorner: {
+  logoTabFold: {
     position: 'absolute',
     top: 0,
     right: 0,
-    width: 18,
-    height: 18,
-    backgroundColor: colors.marigoldSoft,
-    borderBottomLeftRadius: radius.xs,
+    width: 22,
+    height: 22,
+    backgroundColor: colors.paper,
+    borderBottomLeftRadius: radius.sm,
+    borderLeftWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    ...shadows.fold,
   },
   logo: {
     width: '128%',
@@ -246,51 +303,86 @@ export const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
 
-  eyebrow: {
-    ...type.overline,
-    color: colors.inkSoft,
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.periwinkleSoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
     marginTop: spacing.lg,
-    marginBottom: spacing.xxs,
   },
+  badgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.periwinkle,
+    marginRight: 6,
+  },
+  badgeText: {
+    ...type.badge,
+    color: colors.ink,
+  },
+
   appName: {
     ...type.display,
     color: colors.ink,
     textAlign: 'center',
+    marginTop: spacing.sm,
   },
   appTagline: {
     ...type.body,
     color: colors.inkSoft,
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 8,
+    maxWidth: 260,
   },
 
-  // --- WeekStrip signature element ---
+  // --- WeekStrip signature element, now a ruled "ledger" ---
+  weekStripWrap: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
   weekStripRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
-    gap: 7,
-    height: 54,
-    marginTop: spacing.lg,
-    marginBottom: spacing.xxs,
+    gap: 8,
+    height: 52,
   },
   weekStripBarTrack: {
-    width: 9,
-    height: 54,
+    width: 10,
+    height: 52,
     justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  weekStripMarker: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.marigold,
+    marginBottom: 5,
+    ...shadows.marker,
   },
   weekStripBar: {
-    width: 9,
-    borderRadius: radius.xs,
+    width: 10,
+    borderRadius: radius.pill,
+  },
+  weekStripBaseline: {
+    width: '100%',
+    height: 1,
+    backgroundColor: colors.borderStrong,
+    marginTop: 2,
   },
   weekStripLabelRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 7,
-    marginBottom: spacing.md,
+    gap: 8,
+    marginTop: spacing.xs,
   },
   weekStripLabel: {
-    width: 9,
+    width: 10,
     textAlign: 'center',
     ...type.dayLetter,
     color: colors.inkFaint,
@@ -313,10 +405,19 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.ink,
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     width: '100%',
+    overflow: 'hidden',
+  },
+  primaryButtonHighlight: {
+    position: 'absolute',
+    top: 1,
+    left: 14,
+    right: 14,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: radius.pill,
   },
   primaryButtonText: {
     ...type.label,
