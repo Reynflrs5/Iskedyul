@@ -185,6 +185,36 @@ export default function AdminLayout() {
             ),
           }}
         />
+        <Drawer.Screen
+          name="moderation"
+          options={{
+            drawerLabel: 'Decks & Moderation',
+            title: 'Content Moderation',
+            drawerIcon: ({ color, size }) => (
+              <Ionicons name="folder-open" size={size} color={color} />
+            ),
+          }}
+        />
+        <Drawer.Screen
+          name="feedback"
+          options={{
+            drawerLabel: 'Student Feedback',
+            title: 'Feedback & Bug Reports',
+            drawerIcon: ({ color, size }) => (
+              <Ionicons name="chatbubbles" size={size} color={color} />
+            ),
+          }}
+        />
+        <Drawer.Screen
+          name="settings"
+          options={{
+            drawerLabel: 'System Settings',
+            title: 'Platform Governance',
+            drawerIcon: ({ color, size }) => (
+              <Ionicons name="settings" size={size} color={color} />
+            ),
+          }}
+        />
       </Drawer>
     </GestureHandlerRootView>
   );

@@ -431,6 +431,48 @@ export default function AdminDashboard() {
           <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
         </Pressable>
 
+        <Pressable
+          style={styles.actionCard}
+          onPress={() => router.push('/pages/admin/moderation' as any)}
+        >
+          <View style={[styles.actionIconWrap, { backgroundColor: colors.marigoldSoft }]}>
+            <Ionicons name="folder-open" size={24} color={colors.marigoldInk} />
+          </View>
+          <View style={styles.actionTextCol}>
+            <Text style={styles.actionTitle}>Decks & Moderation</Text>
+            <Text style={styles.actionSub}>Review flagged decks & publish templates.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
+        </Pressable>
+
+        <Pressable
+          style={styles.actionCard}
+          onPress={() => router.push('/pages/admin/feedback' as any)}
+        >
+          <View style={[styles.actionIconWrap, { backgroundColor: colors.periwinkleSoft }]}>
+            <Ionicons name="chatbubbles" size={24} color={colors.periwinkle} />
+          </View>
+          <View style={styles.actionTextCol}>
+            <Text style={styles.actionTitle}>Student Feedback & Bugs</Text>
+            <Text style={styles.actionSub}>Resolve issues and review student ratings.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
+        </Pressable>
+
+        <Pressable
+          style={styles.actionCard}
+          onPress={() => router.push('/pages/admin/settings' as any)}
+        >
+          <View style={[styles.actionIconWrap, { backgroundColor: colors.paperLine }]}>
+            <Ionicons name="settings-sharp" size={24} color={colors.ink} />
+          </View>
+          <View style={styles.actionTextCol}>
+            <Text style={styles.actionTitle}>Platform Governance</Text>
+            <Text style={styles.actionSub}>Maintenance mode, term dates & AI toggles.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.inkFaint} />
+        </Pressable>
+
         <Pressable style={styles.actionCard} onPress={onRefresh}>
           <View style={[styles.actionIconWrap, { backgroundColor: colors.paper }]}>
             <Ionicons name="refresh" size={24} color={colors.ink} />
