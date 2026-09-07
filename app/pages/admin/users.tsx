@@ -1,122 +1,194 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  ActivityIndicator,
   Alert,
   Pressable,
   TextInput,
   Modal,
+  RefreshControl,
+  Animated,
+  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../styles/welcome.styles';
 import { Ionicons } from '@expo/vector-icons';
 
-interface UserRecord {
+export interface UserRecord {
   id: string;
   name: string;
   email: string;
   role: 'student' | 'admin' | 'moderator';
   status: 'active' | 'suspended';
   created_at: string;
-  decks_count?: number;
-  tasks_count?: number;
+  decks_count: number;
+  tasks_count: number;
 }
 
-const INITIAL_MOCK_USERS: UserRecord[] = [
-  {
-    id: 'u-101',
-    name: 'Juan Dela Cruz',
-    email: 'juan.delacruz@student.edu',
-    role: 'student',
-    status: 'active',
-    created_at: '2026-08-15T08:30:00Z',
-    decks_count: 5,
-    tasks_count: 18,
-  },
-  {
-    id: 'u-102',
-    name: 'Maria Clara Santos',
-    email: 'maria.santos@student.edu',
-    role: 'student',
-    status: 'active',
-    created_at: '2026-08-18T10:15:00Z',
-    decks_count: 8,
-    tasks_count: 24,
-  },
-  {
-    id: 'u-103',
-    name: 'Admin Desk',
-    email: 'admin@iskedyul.app',
-    role: 'admin',
-    status: 'active',
-    created_at: '2026-08-01T00:00:00Z',
-    decks_count: 12,
-    tasks_count: 45,
-  },
-  {
-    id: 'u-104',
-    name: 'Christian Grey',
-    email: 'christian.grey@spamdomain.com',
-    role: 'student',
-    status: 'suspended',
-    created_at: '2026-08-20T14:40:00Z',
-    decks_count: 1,
-    tasks_count: 2,
-  },
-  {
-    id: 'u-105',
-    name: 'Sophia Bautista',
-    email: 'sophia.b@student.edu',
-    role: 'moderator',
-    status: 'active',
-    created_at: '2026-08-22T09:00:00Z',
-    decks_count: 14,
-    tasks_count: 32,
-  },
+type SortKey = 'newest' | 'oldest' | 'name' | 'activity';
+
+const ROLE_META = {
+  admin: { color: colors.sage, soft: colors.sageSoft, icon: 'shield-checkmark' as const },
+  moderator: { color: colors.marigoldInk, soft: colors.marigoldSoft, icon: 'star' as const },
+  student: { color: colors.periwinkle, soft: colors.periwinkleSoft, icon: 'school' as const },
+};
+
+const SORT_OPTIONS: { key: SortKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'newest', label: 'Newest', icon: 'time-outline' },
+  { key: 'oldest', label: 'Oldest', icon: 'hourglass-outline' },
+  { key: 'name', label: 'Name A–Z', icon: 'text-outline' },
+  { key: 'activity', label: 'Most Active', icon: 'flash-outline' },
 ];
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
+function SkeletonCard() {
+  const pulse = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 650, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <Animated.View style={[styles.skeletonCard, { opacity: pulse }]}>
+      <View style={styles.skeletonAvatar} />
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={[styles.skeletonLine, { width: '55%' }]} />
+        <View style={[styles.skeletonLine, { width: '75%', height: 9 }]} />
+        <View style={[styles.skeletonLine, { width: '40%', height: 9 }]} />
+      </View>
+    </Animated.View>
+  );
+}
 
 export default function ManageUsers() {
   const params = useLocalSearchParams<{ q?: string }>();
-  const [users, setUsers] = useState<UserRecord[]>(INITIAL_MOCK_USERS);
-  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState(params.q || '');
   const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'moderator' | 'admin'>('all');
+  const [sortBy, setSortBy] = useState<SortKey>('newest');
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [userDetailDecks, setUserDetailDecks] = useState<{ id: string; title: string; created_at: string }[]>([]);
+  const [userDetailTasks, setUserDetailTasks] = useState<{ id: string; title: string; created_at: string }[]>([]);
+  const [userDetailLoading, setUserDetailLoading] = useState(false);
+
+
+  const fetchUserDetail = async (userId: string) => {
+    setUserDetailLoading(true);
+    setUserDetailDecks([]);
+    setUserDetailTasks([]);
+    try {
+      const { data, error } = await supabase.rpc('get_user_detail', { p_user_id: userId });
+      if (!error && data) {
+        setUserDetailDecks(data.decks || []);
+        setUserDetailTasks(data.tasks || []);
+      }
+    } catch (e) {
+      // silently fail
+    } finally {
+      setUserDetailLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
   const fetchUsers = async () => {
-    setLoading(true);
     try {
-      const { data, error } = await supabase.from('profiles').select('*').limit(50);
-      if (!error && data && data.length > 0) {
-        const mapped: UserRecord[] = data.map((u: any, idx: number) => ({
-          id: u.id || `u-${idx}`,
-          name: u.full_name || u.name || u.username || 'Student User',
-          email: u.email || 'No email registered',
-          role: u.role || 'student',
-          status: u.status || 'active',
-          created_at: u.created_at || new Date().toISOString(),
-          decks_count: u.decks_count || Math.floor(Math.random() * 8),
-          tasks_count: u.tasks_count || Math.floor(Math.random() * 20),
-        }));
-        setUsers(mapped);
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (profilesError) {
+        console.error('Error loading profiles:', profilesError);
+        Alert.alert('Database Notice', 'Could not load users from Supabase: ' + profilesError.message);
+        setUsers([]);
+        return;
       }
-    } catch {
-      // Fallback stays with INITIAL_MOCK_USERS
+
+      if (!profilesData || profilesData.length === 0) {
+        setUsers([]);
+        return;
+      }
+
+      const userIds = profilesData.map((p) => p.id);
+
+      // Use SECURITY DEFINER RPC to bypass RLS and get counts for all users
+      const { data: activityData } = await supabase.rpc('get_all_user_activity');
+
+      const deckCounts: Record<string, number> = {};
+      const taskCounts: Record<string, number> = {};
+
+      (activityData || []).forEach((row: { user_id: string; deck_count: number; task_count: number }) => {
+        deckCounts[row.user_id] = Number(row.deck_count) || 0;
+        taskCounts[row.user_id] = Number(row.task_count) || 0;
+      });
+
+      const mapped: UserRecord[] = profilesData.map((u: any) => {
+        const isSuperAdmin =
+          u.email && u.email.trim().toLowerCase() === 'jashleyflores0018@gmail.com';
+        return {
+          id: u.id,
+          name: u.full_name || u.name || (isSuperAdmin ? 'Admin Ashley' : 'Student User'),
+          email: u.email || 'No email specified',
+          role: isSuperAdmin ? 'admin' : (u.role as any) || 'student',
+          status: (u.status as any) || 'active',
+          created_at: u.created_at || new Date().toISOString(),
+          decks_count: deckCounts[u.id] || 0,
+          tasks_count: taskCounts[u.id] || 0,
+        };
+      });
+
+      setUsers(mapped);
+    } catch (err: any) {
+      console.error('Fetch users failed:', err);
+      Alert.alert('Error', err?.message || 'Failed to fetch users from database.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const handleToggleSuspend = (user: UserRecord) => {
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchUsers();
+  }, []);
+
+  const handleToggleSuspend = async (user: UserRecord) => {
     const isSuspending = user.status === 'active';
+    const newStatus = isSuspending ? 'suspended' : 'active';
+
     Alert.alert(
       isSuspending ? 'Suspend Account' : 'Reactivate Account',
       `Are you sure you want to ${isSuspending ? 'suspend' : 'reactivate'} ${user.name}?`,
@@ -125,20 +197,36 @@ export default function ManageUsers() {
         {
           text: isSuspending ? 'Suspend' : 'Reactivate',
           style: isSuspending ? 'destructive' : 'default',
-          onPress: () => {
-            setUsers((prev) =>
-              prev.map((u) =>
-                u.id === user.id
-                  ? { ...u, status: isSuspending ? 'suspended' : 'active' }
-                  : u
-              )
-            );
-            if (selectedUser?.id === user.id) {
-              setSelectedUser((prev) =>
-                prev ? { ...prev, status: isSuspending ? 'suspended' : 'active' } : null
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const { error } = await supabase
+                .from('profiles')
+                .update({ status: newStatus })
+                .eq('id', user.id);
+
+              if (error) {
+                Alert.alert('Update Failed', error.message);
+                return;
+              }
+
+              setUsers((prev) =>
+                prev.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u))
               );
+
+              if (selectedUser?.id === user.id) {
+                setSelectedUser((prev) => (prev ? { ...prev, status: newStatus } : null));
+              }
+
+              Alert.alert(
+                'Success',
+                `${user.name} has been ${isSuspending ? 'suspended' : 'reactivated'} in Supabase.`
+              );
+            } catch (e: any) {
+              Alert.alert('Error', e.message);
+            } finally {
+              setActionLoading(false);
             }
-            Alert.alert('Updated', `${user.name} has been ${isSuspending ? 'suspended' : 'reactivated'}.`);
           },
         },
       ]
@@ -146,59 +234,118 @@ export default function ManageUsers() {
   };
 
   const handleChangeRole = (user: UserRecord, newRole: 'student' | 'moderator' | 'admin') => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u))
+    if (user.role === newRole) return;
+
+    const roleLabels: Record<string, string> = {
+      student: 'Student',
+      moderator: 'Moderator',
+      admin: 'Admin',
+    };
+
+    Alert.alert(
+      'Change Role',
+      `Are you sure you want to change ${user.name}'s role from ${roleLabels[user.role]} to ${roleLabels[newRole]}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          style: 'default',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const { error } = await supabase
+                .from('profiles')
+                .update({ role: newRole })
+                .eq('id', user.id);
+
+              if (error) {
+                Alert.alert('Role Update Failed', error.message);
+                return;
+              }
+
+              setUsers((prev) =>
+                prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u))
+              );
+
+              if (selectedUser?.id === user.id) {
+                setSelectedUser((prev) => (prev ? { ...prev, role: newRole } : null));
+              }
+
+              Alert.alert('Role Updated', `${user.name} is now a ${roleLabels[newRole]} in Supabase.`);
+            } catch (e: any) {
+              Alert.alert('Error', e.message);
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
     );
-    if (selectedUser?.id === user.id) {
-      setSelectedUser((prev) => (prev ? { ...prev, role: newRole } : null));
-    }
-    Alert.alert('Role Updated', `${user.name}'s role is now ${newRole.toUpperCase()}.`);
   };
 
+
+  const roleCounts = useMemo(() => {
+    return {
+      all: users.length,
+      student: users.filter((u) => u.role === 'student').length,
+      moderator: users.filter((u) => u.role === 'moderator').length,
+      admin: users.filter((u) => u.role === 'admin').length,
+    };
+  }, [users]);
+
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      const matchSearch =
-        u.name.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    let list = users.filter((u) => {
+      const matchSearch = u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
       const matchRole = roleFilter === 'all' || u.role === roleFilter;
       return matchSearch && matchRole;
     });
-  }, [users, search, roleFilter]);
+
+    list = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case 'newest':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'oldest':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'activity':
+          return b.decks_count + b.tasks_count - (a.decks_count + a.tasks_count);
+        default:
+          return 0;
+      }
+    });
+
+    return list;
+  }, [users, search, roleFilter, sortBy]);
+
+  const currentSortLabel = SORT_OPTIONS.find((s) => s.key === sortBy)?.label ?? 'Newest';
 
   const renderUserItem = ({ item }: { item: UserRecord }) => {
     const isSuspended = item.status === 'suspended';
+    const meta = ROLE_META[item.role];
     return (
       <Pressable
-        style={[styles.userCard, isSuspended && styles.userCardSuspended]}
-        onPress={() => setSelectedUser(item)}
+        style={({ pressed }) => [
+          styles.userCard,
+          isSuspended && styles.userCardSuspended,
+          pressed && styles.userCardPressed,
+        ]}
+        onPress={() => {
+          setSelectedUser(item);
+          fetchUserDetail(item.id);
+        }}
       >
         <View style={styles.userInfo}>
-          <View
-            style={[
-              styles.avatarWrap,
-              item.role === 'admin'
-                ? { backgroundColor: colors.sageSoft }
-                : item.role === 'moderator'
-                ? { backgroundColor: colors.marigoldSoft }
-                : { backgroundColor: colors.periwinkleSoft },
-            ]}
-          >
-            <Ionicons
-              name={
-                item.role === 'admin'
-                  ? 'shield-checkmark'
-                  : item.role === 'moderator'
-                  ? 'star'
-                  : 'school'
-              }
-              size={20}
-              color={
-                item.role === 'admin'
-                  ? colors.sage
-                  : item.role === 'moderator'
-                  ? colors.marigoldInk
-                  : colors.periwinkle
-              }
+          <View style={[styles.avatarWrap, { backgroundColor: meta.soft }]}>
+            <Text style={[styles.avatarInitials, { color: meta.color }]}>
+              {getInitials(item.name)}
+            </Text>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: isSuspended ? colors.error : colors.sage },
+              ]}
             />
           </View>
 
@@ -207,54 +354,32 @@ export default function ManageUsers() {
               <Text style={styles.userName} numberOfLines={1}>
                 {item.name}
               </Text>
-              {isSuspended && (
-                <View style={styles.suspendedTag}>
-                  <Text style={styles.suspendedTagText}>SUSPENDED</Text>
-                </View>
-              )}
+              <Ionicons name={meta.icon} size={12} color={meta.color} />
             </View>
             <Text style={styles.userEmail} numberOfLines={1}>
               {item.email}
             </Text>
 
             <View style={styles.badgeRow}>
-              <View
-                style={[
-                  styles.roleBadge,
-                  item.role === 'admin'
-                    ? { backgroundColor: colors.sageSoft }
-                    : item.role === 'moderator'
-                    ? { backgroundColor: colors.marigoldSoft }
-                    : { backgroundColor: colors.paperLine },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.roleText,
-                    item.role === 'admin'
-                      ? { color: colors.sage }
-                      : item.role === 'moderator'
-                      ? { color: colors.marigoldInk }
-                      : { color: colors.inkSoft },
-                  ]}
-                >
-                  {item.role}
-                </Text>
+              <View style={[styles.roleBadge, { backgroundColor: meta.soft }]}>
+                <Text style={[styles.roleText, { color: meta.color }]}>{item.role}</Text>
               </View>
               <Text style={styles.statCount}>
-                📚 {item.decks_count} decks • 📋 {item.tasks_count} tasks
+                {item.decks_count} decks · {item.tasks_count} tasks
               </Text>
             </View>
+            <Text style={styles.joinedText}>Joined {timeAgo(item.created_at)}</Text>
           </View>
         </View>
 
         <Pressable
           onPress={() => handleToggleSuspend(item)}
+          hitSlop={8}
           style={[styles.actionBtn, isSuspended && styles.actionBtnReactivate]}
         >
           <Ionicons
-            name={isSuspended ? 'refresh-circle' : 'ban'}
-            size={18}
+            name={isSuspended ? 'refresh' : 'ban-outline'}
+            size={17}
             color={isSuspended ? colors.sage : colors.error}
           />
         </Pressable>
@@ -264,26 +389,41 @@ export default function ManageUsers() {
 
   return (
     <View style={styles.container}>
-      {/* Search & Filter Bar */}
+      {/* Search & Filter Header */}
       <View style={styles.searchHeader}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color={colors.inkFaint} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search students by name or email..."
-            placeholderTextColor={colors.inkFaint}
-            style={styles.searchInput}
-          />
-          {search ? (
-            <Pressable onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={16} color={colors.inkFaint} />
-            </Pressable>
-          ) : null}
+        <View style={styles.searchRow}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={18} color={colors.inkFaint} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search users..."
+              placeholderTextColor={colors.inkFaint}
+              style={styles.searchInput}
+            />
+            {search ? (
+              <Pressable onPress={() => setSearch('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={colors.inkFaint} />
+              </Pressable>
+            ) : null}
+          </View>
+
+          <Pressable style={styles.sortBtn} onPress={() => setSortSheetOpen(true)}>
+            <Ionicons name="swap-vertical" size={16} color={colors.ink} />
+          </Pressable>
         </View>
 
-        {/* Role Pills */}
-        <View style={styles.filterPills}>
+        <View style={styles.sortHint}>
+          <Ionicons name="funnel-outline" size={11} color={colors.inkFaint} />
+          <Text style={styles.sortHintText}>Sorted by {currentSortLabel}</Text>
+        </View>
+
+        {/* Role Filter Pills */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterPills}
+        >
           {(['all', 'student', 'moderator', 'admin'] as const).map((r) => (
             <Pressable
               key={r}
@@ -291,21 +431,22 @@ export default function ManageUsers() {
               style={[styles.filterPill, roleFilter === r && styles.filterPillActive]}
             >
               <Text
-                style={[
-                  styles.filterPillText,
-                  roleFilter === r && styles.filterPillTextActive,
-                ]}
+                style={[styles.filterPillText, roleFilter === r && styles.filterPillTextActive]}
               >
-                {r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}
+                {r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)} ({roleCounts[r]})
               </Text>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       </View>
 
-      {/* User List */}
+      {/* Users List */}
       {loading ? (
-        <ActivityIndicator size="large" color={colors.marigold} style={{ marginTop: 40 }} />
+        <View style={styles.listContent}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </View>
       ) : (
         <FlatList
           data={filteredUsers}
@@ -313,14 +454,56 @@ export default function ManageUsers() {
           renderItem={renderUserItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.ink} />
+          }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Ionicons name="people-outline" size={40} color={colors.inkFaint} />
-              <Text style={styles.emptyText}>No users match your criteria.</Text>
+              <Ionicons name="people-outline" size={44} color={colors.inkFaint} />
+              <Text style={styles.emptyTitle}>No Users Found</Text>
+              <Text style={styles.emptyText}>
+                {search
+                  ? 'No accounts match your search filter.'
+                  : 'New signups will automatically appear here.'}
+              </Text>
             </View>
           }
         />
       )}
+
+      {/* Sort Bottom Sheet */}
+      <Modal visible={sortSheetOpen} transparent animationType="fade" onRequestClose={() => setSortSheetOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setSortSheetOpen(false)}>
+          <Pressable style={styles.sortSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.sortSheetTitle}>Sort Users By</Text>
+            {SORT_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.key}
+                style={[styles.sortOption, sortBy === opt.key && styles.sortOptionActive]}
+                onPress={() => {
+                  setSortBy(opt.key);
+                  setSortSheetOpen(false);
+                }}
+              >
+                <Ionicons
+                  name={opt.icon}
+                  size={18}
+                  color={sortBy === opt.key ? colors.ink : colors.inkSoft}
+                />
+                <Text
+                  style={[styles.sortOptionText, sortBy === opt.key && styles.sortOptionTextActive]}
+                >
+                  {opt.label}
+                </Text>
+                {sortBy === opt.key && (
+                  <Ionicons name="checkmark" size={18} color={colors.ink} style={{ marginLeft: 'auto' }} />
+                )}
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* User Details & Action Modal */}
       {selectedUser && (
@@ -335,27 +518,50 @@ export default function ManageUsers() {
               <View style={styles.modalHandle} />
 
               <View style={styles.modalHeader}>
-                <View style={styles.modalAvatar}>
-                  <Ionicons name="person" size={28} color={colors.ink} />
+                <View
+                  style={[
+                    styles.modalAvatar,
+                    { backgroundColor: ROLE_META[selectedUser.role].soft },
+                  ]}
+                >
+                  <Text
+                    style={[styles.modalAvatarText, { color: ROLE_META[selectedUser.role].color }]}
+                  >
+                    {getInitials(selectedUser.name)}
+                  </Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalName}>{selectedUser.name}</Text>
                   <Text style={styles.modalEmail}>{selectedUser.email}</Text>
+                  <Text style={styles.modalJoined}>
+                    Joined {timeAgo(selectedUser.created_at)}
+                  </Text>
                 </View>
-                <Pressable onPress={() => setSelectedUser(null)} style={styles.closeBtn}>
+                <Pressable onPress={() => setSelectedUser(null)} style={styles.closeBtn} hitSlop={8}>
                   <Ionicons name="close" size={20} color={colors.ink} />
                 </Pressable>
               </View>
+
+              {selectedUser.status === 'suspended' && (
+                <View style={styles.suspendedBanner}>
+                  <Ionicons name="alert-circle" size={14} color={colors.error} />
+                  <Text style={styles.suspendedBannerText}>
+                    This account is currently suspended.
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.modalStatsGrid}>
                 <View style={styles.modalStatCol}>
                   <Text style={styles.modalStatNum}>{selectedUser.decks_count}</Text>
                   <Text style={styles.modalStatLabel}>Decks</Text>
                 </View>
+                <View style={styles.modalStatDivider} />
                 <View style={styles.modalStatCol}>
                   <Text style={styles.modalStatNum}>{selectedUser.tasks_count}</Text>
                   <Text style={styles.modalStatLabel}>Tasks</Text>
                 </View>
+                <View style={styles.modalStatDivider} />
                 <View style={styles.modalStatCol}>
                   <Text
                     style={[
@@ -363,41 +569,92 @@ export default function ManageUsers() {
                       { color: selectedUser.status === 'active' ? colors.sage : colors.error },
                     ]}
                   >
-                    {selectedUser.status.toUpperCase()}
+                    {selectedUser.status === 'active' ? 'Active' : 'Suspended'}
                   </Text>
                   <Text style={styles.modalStatLabel}>Status</Text>
                 </View>
               </View>
 
+              {/* Decks List */}
+              <Text style={styles.actionSectionTitle}>DECKS ({userDetailLoading ? '…' : userDetailDecks.length})</Text>
+              {userDetailLoading ? (
+                <View style={styles.detailLoadingRow}>
+                  <View style={[styles.detailSkeleton, { width: '60%' }]} />
+                  <View style={[styles.detailSkeleton, { width: '45%' }]} />
+                </View>
+              ) : userDetailDecks.length === 0 ? (
+                <Text style={styles.detailEmpty}>No decks yet.</Text>
+              ) : (
+                <ScrollView style={styles.detailList} nestedScrollEnabled>
+                  {userDetailDecks.map((deck) => (
+                    <View key={deck.id} style={styles.detailItem}>
+                      <Ionicons name="layers-outline" size={14} color={colors.periwinkle} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailItemTitle} numberOfLines={1}>{deck.title}</Text>
+                        <Text style={styles.detailItemSub}>{timeAgo(deck.created_at)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* Tasks List */}
+              <Text style={[styles.actionSectionTitle, { marginTop: 8 }]}>TASKS ({userDetailLoading ? '…' : userDetailTasks.length})</Text>
+              {userDetailLoading ? (
+                <View style={styles.detailLoadingRow}>
+                  <View style={[styles.detailSkeleton, { width: '70%' }]} />
+                  <View style={[styles.detailSkeleton, { width: '50%' }]} />
+                </View>
+              ) : userDetailTasks.length === 0 ? (
+                <Text style={styles.detailEmpty}>No tasks yet.</Text>
+              ) : (
+                <ScrollView style={styles.detailList} nestedScrollEnabled>
+                  {userDetailTasks.map((task) => (
+                    <View key={task.id} style={styles.detailItem}>
+                      <Ionicons name="checkmark-done-outline" size={14} color={colors.sage} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailItemTitle} numberOfLines={1}>{task.title}</Text>
+                        <Text style={styles.detailItemSub}>{timeAgo(task.created_at)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
               <Text style={styles.actionSectionTitle}>ASSIGN ACCOUNT ROLE</Text>
               <View style={styles.rolePickerRow}>
-                {(['student', 'moderator', 'admin'] as const).map((roleOption) => (
-                  <Pressable
-                    key={roleOption}
-                    onPress={() => handleChangeRole(selectedUser, roleOption)}
-                    style={[
-                      styles.rolePickerBtn,
-                      selectedUser.role === roleOption && styles.rolePickerBtnActive,
-                    ]}
-                  >
-                    <Text
+                {(['student', 'moderator', 'admin'] as const).map((roleOption) => {
+                  const meta = ROLE_META[roleOption];
+                  const active = selectedUser.role === roleOption;
+                  return (
+                    <Pressable
+                      key={roleOption}
+                      disabled={actionLoading}
+                      onPress={() => handleChangeRole(selectedUser, roleOption)}
                       style={[
-                        styles.rolePickerText,
-                        selectedUser.role === roleOption && styles.rolePickerTextActive,
+                        styles.rolePickerBtn,
+                        active && { backgroundColor: meta.color, borderColor: meta.color },
                       ]}
                     >
-                      {roleOption.toUpperCase()}
-                    </Text>
-                  </Pressable>
-                ))}
+                      <Ionicons
+                        name={meta.icon}
+                        size={14}
+                        color={active ? colors.paper : colors.inkSoft}
+                      />
+                      <Text
+                        style={[styles.rolePickerText, active && styles.rolePickerTextActive]}
+                      >
+                        {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
 
               <Text style={styles.actionSectionTitle}>ACCOUNT RESTRICTIONS</Text>
               <Pressable
-                style={[
-                  styles.suspendBtn,
-                  selectedUser.status === 'suspended' && styles.reactivateBtn,
-                ]}
+                disabled={actionLoading}
+                style={[styles.suspendBtn, selectedUser.status === 'suspended' && styles.reactivateBtn]}
                 onPress={() => handleToggleSuspend(selectedUser)}
               >
                 <Ionicons
@@ -411,9 +668,7 @@ export default function ManageUsers() {
                     selectedUser.status === 'suspended' && { color: colors.sage },
                   ]}
                 >
-                  {selectedUser.status === 'active'
-                    ? 'Suspend Student Account'
-                    : 'Restore & Reactivate Account'}
+                  {selectedUser.status === 'active' ? 'Suspend This User' : 'Reactivate This User'}
                 </Text>
               </Pressable>
             </View>
@@ -426,6 +681,8 @@ export default function ManageUsers() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
+
+  // Search & filters
   searchHeader: {
     backgroundColor: colors.paperRaised,
     padding: spacing.md,
@@ -433,7 +690,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     gap: spacing.sm,
   },
+  searchRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   searchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.paper,
@@ -450,12 +712,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.ink,
   },
+  sortBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.md,
+    backgroundColor: colors.paper,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sortHintText: {
+    ...type.caption,
+    fontSize: 10,
+    color: colors.inkFaint,
+  },
   filterPills: {
     flexDirection: 'row',
     gap: 6,
   },
   filterPill: {
-    paddingVertical: 4,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: radius.pill,
     backgroundColor: colors.paper,
@@ -475,21 +757,58 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: colors.paper,
   },
-  listContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
-    paddingBottom: 40,
+
+  centerLoading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
   },
-  userCard: {
+
+  // Skeleton
+  skeletonCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
     backgroundColor: colors.paperRaised,
     padding: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  skeletonAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.paperLine,
+  },
+  skeletonLine: {
+    height: 11,
+    borderRadius: 4,
+    backgroundColor: colors.paperLine,
+  },
+
+  listContent: {
+    padding: spacing.md,
+    gap: spacing.sm,
+    paddingBottom: 40,
+  },
+
+  // User card
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    backgroundColor: colors.paperRaised,
+    padding: spacing.md,
+    borderRadius: radius.lg ?? radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     ...shadows.soft,
+  },
+  userCardPressed: {
+    opacity: 0.85,
   },
   userCardSuspended: {
     opacity: 0.65,
@@ -497,17 +816,31 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
     flex: 1,
     paddingRight: 8,
   },
   avatarWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  statusDot: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.paperRaised,
   },
   nameRow: {
     flexDirection: 'row',
@@ -519,17 +852,6 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 15,
     flexShrink: 1,
-  },
-  suspendedTag: {
-    backgroundColor: colors.errorSoft,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  suspendedTagText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.error,
   },
   userEmail: {
     ...type.caption,
@@ -558,6 +880,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.inkSoft,
   },
+  joinedText: {
+    ...type.caption,
+    fontSize: 10,
+    color: colors.inkFaint,
+    marginTop: 3,
+  },
   actionBtn: {
     width: 36,
     height: 36,
@@ -569,16 +897,64 @@ const styles = StyleSheet.create({
   actionBtnReactivate: {
     backgroundColor: colors.sageSoft,
   },
+
   emptyWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 50,
+    paddingVertical: 60,
     gap: 8,
+  },
+  emptyTitle: {
+    ...type.label,
+    color: colors.ink,
+    fontSize: 16,
+    marginTop: 6,
   },
   emptyText: {
     ...type.caption,
     color: colors.inkFaint,
+    textAlign: 'center',
+    paddingHorizontal: 30,
+    marginTop: 4,
   },
+
+  // Sort sheet
+  sortSheet: {
+    backgroundColor: colors.paperRaised,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    paddingBottom: 32,
+    gap: 4,
+  },
+  sortSheetTitle: {
+    ...type.h2,
+    fontSize: 16,
+    color: colors.ink,
+    marginBottom: 8,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: radius.md,
+  },
+  sortOptionActive: {
+    backgroundColor: colors.paperLine,
+  },
+  sortOptionText: {
+    ...type.body,
+    fontSize: 14,
+    color: colors.inkSoft,
+  },
+  sortOptionTextActive: {
+    color: colors.ink,
+    fontWeight: '700',
+  },
+
+  // Detail modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(19, 42, 76, 0.45)',
@@ -606,12 +982,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.paperLine,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalAvatarText: {
+    fontSize: 18,
+    fontWeight: '800',
   },
   modalName: {
     ...type.h2,
@@ -623,8 +1002,29 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     marginTop: 2,
   },
+  modalJoined: {
+    ...type.caption,
+    fontSize: 10,
+    color: colors.inkFaint,
+    marginTop: 2,
+  },
   closeBtn: {
     padding: 6,
+  },
+  suspendedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.errorSoft,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: radius.sm,
+  },
+  suspendedBannerText: {
+    ...type.caption,
+    color: colors.error,
+    fontSize: 11,
+    fontWeight: '600',
   },
   modalStatsGrid: {
     flexDirection: 'row',
@@ -634,14 +1034,21 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     justifyContent: 'space-around',
+    alignItems: 'center',
   },
   modalStatCol: {
     alignItems: 'center',
+    flex: 1,
+  },
+  modalStatDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: colors.border,
   },
   modalStatNum: {
     ...type.h2,
     color: colors.ink,
-    fontSize: 18,
+    fontSize: 16,
   },
   modalStatLabel: {
     ...type.caption,
@@ -662,16 +1069,15 @@ const styles = StyleSheet.create({
   },
   rolePickerBtn: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: 10,
     borderRadius: radius.sm,
     backgroundColor: colors.paper,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
-  },
-  rolePickerBtnActive: {
-    backgroundColor: colors.ink,
-    borderColor: colors.ink,
   },
   rolePickerText: {
     ...type.caption,
@@ -699,5 +1105,54 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontWeight: '700',
     fontSize: 14,
+  },
+
+  // User detail lists
+  detailList: {
+    maxHeight: 140,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    backgroundColor: colors.paper,
+    marginTop: 4,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  detailItemTitle: {
+    ...type.body,
+    fontSize: 12,
+    color: colors.ink,
+    fontWeight: '600',
+  },
+  detailItemSub: {
+    ...type.caption,
+    fontSize: 10,
+    color: colors.inkFaint,
+    marginTop: 1,
+  },
+  detailEmpty: {
+    ...type.caption,
+    color: colors.inkFaint,
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  detailLoadingRow: {
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  detailSkeleton: {
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: colors.paperLine,
   },
 });

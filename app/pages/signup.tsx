@@ -185,7 +185,24 @@ export default function SignupScreen() {
     if (error) {
       Alert.alert('Sign Up Failed', error.message);
     } else {
-      // Also checking mgail.com just in case it wasn't a typo!
+      // Ensure user profile is recorded in public.profiles table
+      if (data?.user?.id) {
+        try {
+          await supabase.from('profiles').upsert([
+            {
+              id: data.user.id,
+              full_name: name.trim(),
+              email: email.trim().toLowerCase(),
+              role: email.toLowerCase() === 'jashleyflores0018@gmail.com' ? 'admin' : 'student',
+              status: 'active',
+            },
+          ]);
+        } catch {
+          // non-fatal
+        }
+      }
+
+      // Route admin or dashboard
       if (email.toLowerCase() === 'jashleyflores0018@gmail.com') {
         router.replace('/pages/admin' as any);
       } else {

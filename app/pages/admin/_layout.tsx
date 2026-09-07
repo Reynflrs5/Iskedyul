@@ -19,12 +19,16 @@ import { supabase } from '../../../utils/supabase';
 import { colors, radius, spacing, type, shadows } from '../../styles/welcome.styles';
 
 function CustomAdminDrawerContent(props: any) {
-  const [adminEmail, setAdminEmail] = useState<string>('admin@iskedyul.app');
+  const [adminEmail, setAdminEmail] = useState<string>('jashleyflores0018@gmail.com');
+  const [adminName, setAdminName] = useState<string>('Ashley (Admin)');
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user?.email) {
         setAdminEmail(data.user.email);
+        if (data.user.user_metadata?.full_name) {
+          setAdminName(data.user.user_metadata.full_name);
+        }
       }
     });
   }, []);
@@ -66,7 +70,7 @@ function CustomAdminDrawerContent(props: any) {
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.profileName} numberOfLines={1}>
-              System Administrator
+              {adminName}
             </Text>
             <Text style={styles.profileEmail} numberOfLines={1}>
               {adminEmail}

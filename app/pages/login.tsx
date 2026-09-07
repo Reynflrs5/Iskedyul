@@ -178,7 +178,44 @@ export default function LoginScreen() {
     if (error) {
       Alert.alert('Sign In Failed', error.message);
     } else {
-      // Also checking mgail.com just in case it wasn't a typo!
+      // Sync or fetch profile
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Check if user is suspended
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('status, role')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.status === 'suspended') {
+          await supabase.auth.signOut();
+          Alert.alert(
+            'Account Suspended',
+            'Your Iskedyul account has been suspended by an administrator. Please contact support.'
+          );
+          return;
+        }
+
+        // Upsert if not recorded yet
+        if (!profile) {
+          try {
+            await supabase.from('profiles').upsert([
+              {
+                id: user.id,
+                full_name: user.user_metadata?.full_name || email.split('@')[0],
+                email: email.trim().toLowerCase(),
+                role: email.toLowerCase() === 'jashleyflores0018@gmail.com' ? 'admin' : 'student',
+                status: 'active',
+              },
+            ]);
+          } catch {
+            // non-fatal
+          }
+        }
+      }
+
+      // Also checking admin redirect
       if (email.toLowerCase() === 'jashleyflores0018@gmail.com') {
         router.replace('/pages/admin' as any);
       } else {

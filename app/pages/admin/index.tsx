@@ -105,8 +105,8 @@ export default function AdminDashboard() {
         countBetween('tasks', prevPeriodStart, periodStart),
         countBetween('classes', periodStart, nowIso),
         countBetween('classes', prevPeriodStart, periodStart),
-        countBetween('users', periodStart, nowIso).catch(() => 0),
-        countBetween('users', prevPeriodStart, periodStart).catch(() => 0),
+        countBetween('profiles', periodStart, nowIso).catch(() => 0),
+        countBetween('profiles', prevPeriodStart, periodStart).catch(() => 0),
       ]);
 
       setStats({
